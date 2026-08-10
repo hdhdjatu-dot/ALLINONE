@@ -14,22 +14,18 @@ from discord.ext import commands
 
 DATA_FILE = "security_data.json"
 
-
 # ============================================================
 # BOT OWNERS
 # ============================================================
-# In dono IDs ko bot owner maana jayega.
-# Server owner ko bhi automatic bypass milega.
+# These IDs ALWAYS have security-owner access.
+# Server owner also has access automatically.
 
 BOT_OWNER_IDS = {
     1519933809402056805,
     1435943252455981080,
+    1517901703263944758,
 }
 
-
-# ============================================================
-# DEFAULT SETTINGS
-# ============================================================
 
 DEFAULT_SETTINGS = {
     "antinuke": True,
@@ -128,10 +124,6 @@ class Security(commands.Cog):
 
         if guild_id not in self.data:
 
-            # IMPORTANT:
-            # Deep copy style so whitelist list
-            # shared na ho.
-
             self.data[guild_id] = {
                 "antinuke": True,
                 "antibot": True,
@@ -146,34 +138,21 @@ class Security(commands.Cog):
 
         settings = self.data[guild_id]
 
-        # Missing settings repair
+        for key, value in DEFAULT_SETTINGS.items():
 
-        if "antinuke" not in settings:
-            settings["antinuke"] = True
+            if key not in settings:
 
-        if "antibot" not in settings:
-            settings["antibot"] = True
-
-        if "antilink" not in settings:
-            settings["antilink"] = True
-
-        if "antimod" not in settings:
-            settings["antimod"] = True
-
-        if "antispam" not in settings:
-            settings["antispam"] = True
-
-        if "duplicate" not in settings:
-            settings["duplicate"] = True
-
-        if "whitelist_music" not in settings:
-            settings["whitelist_music"] = []
+                if isinstance(value, list):
+                    settings[key] = list(value)
+                else:
+                    settings[key] = value
 
         return settings
 
 
     # ========================================================
     # OWNER CHECK
+    # SERVER OWNER OR BOT OWNER
     # ========================================================
 
     async def is_owner(self, member):
@@ -193,12 +172,29 @@ class Security(commands.Cog):
             return True
 
         # ----------------------------------------------------
-        # BOT OWNER
+        # MANUAL BOT OWNER IDS
         # ----------------------------------------------------
 
         if member.id in BOT_OWNER_IDS:
 
             return True
+
+        # ----------------------------------------------------
+        # DISCORD.PY BOT OWNER
+        # ----------------------------------------------------
+
+        try:
+
+            if await self.bot.is_owner(member):
+
+                return True
+
+        except Exception as e:
+
+            print(
+                "[SECURITY] BOT OWNER CHECK ERROR:",
+                repr(e)
+            )
 
         return False
 
@@ -216,7 +212,7 @@ class Security(commands.Cog):
 
 
     # ========================================================
-    # SECURITY ANIMATION
+    # BRUTAL SECURITY ANIMATION
     # ========================================================
 
     async def security_animation(self, ctx, enabled):
@@ -249,12 +245,41 @@ class Security(commands.Cog):
 
         systems = [
 
-            ("🔗", "ANTI-LINK", "antilink"),
-            ("🤖", "ANTI-BOT", "antibot"),
-            ("☢️", "ANTI-NUKE", "antinuke"),
-            ("🔨", "ANTI-MOD", "antimod"),
-            ("💬", "ANTI-SPAM", "antispam"),
-            ("♻️", "DUPLICATE GUARD", "duplicate")
+            (
+                "🔗",
+                "ANTI-LINK",
+                "antilink"
+            ),
+
+            (
+                "🤖",
+                "ANTI-BOT",
+                "antibot"
+            ),
+
+            (
+                "☢️",
+                "ANTI-NUKE",
+                "antinuke"
+            ),
+
+            (
+                "🔨",
+                "ANTI-MOD",
+                "antimod"
+            ),
+
+            (
+                "💬",
+                "ANTI-SPAM",
+                "antispam"
+            ),
+
+            (
+                "♻️",
+                "DUPLICATE GUARD",
+                "duplicate"
+            )
         ]
 
         settings = self.get_settings(
@@ -317,9 +342,8 @@ class Security(commands.Cog):
 
             await asyncio.sleep(0.16)
 
-
         # ====================================================
-        # SYSTEMS
+        # EACH SECURITY
         # ====================================================
 
         completed = []
@@ -351,16 +375,16 @@ class Security(commands.Cog):
                     * 100
                 )
 
-                percent = min(
-                    percent,
-                    99
-                )
+                if percent > 99:
+                    percent = 99
 
                 bar_length = 20
 
                 filled = int(
                     (
-                        percent / 100
+                        percent
+                        /
+                        100
                     )
                     * bar_length
                 )
@@ -411,7 +435,8 @@ class Security(commands.Cog):
 
                         "║                              ║\n"
 
-                        "║   \u001b[1;33m◉ SCANNING SECURITY...\u001b[1;32m ║\n"
+                        "║   \u001b[1;33m◉ SCANNING SECURITY..."
+                        "\u001b[1;32m ║\n"
 
                         "║                              ║\n"
 
@@ -424,12 +449,13 @@ class Security(commands.Cog):
 
                 await asyncio.sleep(0.13)
 
+            # ------------------------------------------------
+            # SAVE STATE
+            # ------------------------------------------------
 
             settings[key] = enabled
 
-            save_data(
-                self.data
-            )
+            save_data(self.data)
 
             completed.append(
                 (
@@ -473,7 +499,8 @@ class Security(commands.Cog):
 
                     "║                              ║\n"
 
-                    "║       \u001b[1;32m✓ PROTECTED\u001b[1;32m         ║\n"
+                    "║       \u001b[1;32m✓ PROTECTED"
+                    "\u001b[1;32m         ║\n"
 
                     "║                              ║\n"
 
@@ -485,7 +512,6 @@ class Security(commands.Cog):
             )
 
             await asyncio.sleep(0.45)
-
 
         # ====================================================
         # FINAL
@@ -545,7 +571,6 @@ class Security(commands.Cog):
             )
 
             await asyncio.sleep(0.18)
-
 
         await asyncio.sleep(5)
 
@@ -651,7 +676,6 @@ class Security(commands.Cog):
                 f"║ ♻️ Duplicate      "
                 f"{'🟢 ON' if settings['duplicate'] else '🔴 OFF'} ║\n"
 
-                "\n"
                 "╚══════════════════════════╝\n"
 
                 "\u001b[0m"
@@ -674,14 +698,19 @@ class Security(commands.Cog):
     # CLEAR
     # ========================================================
 
-    @commands.command(
-        name="clear"
+    @commands.hybrid_command(
+        name="clear",
+        description="Delete messages"
     )
     @commands.guild_only()
     @commands.has_permissions(
         manage_messages=True
     )
-    async def clear(self, ctx, amount: int):
+    async def clear(
+        self,
+        ctx,
+        amount: int
+    ):
 
         if amount < 1 or amount > 100:
 
@@ -719,63 +748,6 @@ class Security(commands.Cog):
                 delete_after=5
             )
 
-        except Exception as e:
-
-            print(
-                "[SECURITY] CLEAR ERROR:",
-                repr(e)
-            )
-
-            await ctx.send(
-                "❌ Messages clear nahi ho paaye.",
-                delete_after=5
-            )
-
-
-    # ========================================================
-    # CLEAR PERMISSION ERROR
-    # ========================================================
-
-    @clear.error
-    async def clear_error(self, ctx, error):
-
-        if isinstance(
-            error,
-            commands.MissingPermissions
-        ):
-
-            await ctx.send(
-                "❌ **Manage Messages permission required.**",
-                delete_after=5
-            )
-
-        elif isinstance(
-            error,
-            commands.MissingRequiredArgument
-        ):
-
-            await ctx.send(
-                "❌ Usage: `!clear <amount>`",
-                delete_after=5
-            )
-
-        elif isinstance(
-            error,
-            commands.BadArgument
-        ):
-
-            await ctx.send(
-                "❌ Amount number hona chahiye. Example: `!clear 10`",
-                delete_after=5
-            )
-
-        else:
-
-            print(
-                "[SECURITY] CLEAR COMMAND ERROR:",
-                repr(error)
-            )
-
 
     # ========================================================
     # MUSIC WHITELIST
@@ -808,19 +780,6 @@ class Security(commands.Cog):
             []
         )
 
-        # Normalize old JSON data
-        users = [
-            int(x)
-            for x in users
-            if str(x).isdigit()
-        ]
-
-        settings["whitelist_music"] = users
-
-        # ----------------------------------------------------
-        # REMOVE
-        # ----------------------------------------------------
-
         if member.id in users:
 
             users.remove(
@@ -836,10 +795,6 @@ class Security(commands.Cog):
                 "**music whitelist se remove ho gaya.**",
                 delete_after=5
             )
-
-        # ----------------------------------------------------
-        # ADD
-        # ----------------------------------------------------
 
         users.append(
             member.id
@@ -931,18 +886,6 @@ class Security(commands.Cog):
                 delete_after=5
             )
 
-        except Exception as e:
-
-            print(
-                "[SECURITY] GIVEROLE ERROR:",
-                repr(e)
-            )
-
-            await ctx.send(
-                "❌ Role assign nahi ho paya.",
-                delete_after=5
-            )
-
 
     # ========================================================
     # ANTI-BOT
@@ -965,7 +908,6 @@ class Security(commands.Cog):
             "antibot",
             True
         ):
-
             return
 
         try:
@@ -983,21 +925,38 @@ class Security(commands.Cog):
 
                 inviter = entry.user
 
-                # ------------------------------------------------
-                # OWNER BYPASS
-                # ------------------------------------------------
-
-                if await self.is_owner(inviter):
+                # SERVER OWNER BYPASS
+                if inviter.id == member.guild.owner_id:
 
                     print(
-                        f"[SECURITY] Owner added bot: {member}"
+                        f"[SECURITY] Server owner added {member}"
                     )
 
                     return
 
-                # ------------------------------------------------
-                # UNAUTHORIZED BOT
-                # ------------------------------------------------
+                # BOT OWNER BYPASS
+                if inviter.id in BOT_OWNER_IDS:
+
+                    print(
+                        f"[SECURITY] Bot owner added {member}"
+                    )
+
+                    return
+
+                try:
+
+                    if await self.bot.is_owner(
+                        inviter
+                    ):
+
+                        print(
+                            f"[SECURITY] Bot owner added {member}"
+                        )
+
+                        return
+
+                except Exception:
+                    pass
 
                 print(
                     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -1019,10 +978,6 @@ class Security(commands.Cog):
                     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 )
 
-                # ------------------------------------------------
-                # KICK BOT
-                # ------------------------------------------------
-
                 try:
 
                     await member.kick(
@@ -1042,10 +997,6 @@ class Security(commands.Cog):
                         "[SECURITY] BOT KICK ERROR:",
                         repr(e)
                     )
-
-                # ------------------------------------------------
-                # REMOVE INVITER ROLES
-                # ------------------------------------------------
 
                 if isinstance(
                     inviter,
@@ -1075,15 +1026,24 @@ class Security(commands.Cog):
         member
     ):
 
-        # SERVER OWNER BYPASS
-
+        # Never touch server owner
         if member.id == member.guild.owner_id:
             return
 
-        # BOT OWNER BYPASS
-
+        # Never touch manual bot owners
         if member.id in BOT_OWNER_IDS:
             return
+
+        # Never touch discord.py bot owners
+        try:
+
+            if await self.bot.is_owner(
+                member
+            ):
+                return
+
+        except Exception:
+            pass
 
         me = member.guild.me
 
@@ -1151,22 +1111,10 @@ class Security(commands.Cog):
             guild_id
         )
 
-        users = settings.get(
+        return user_id in settings.get(
             "whitelist_music",
             []
         )
-
-        for stored_id in users:
-
-            try:
-
-                if int(stored_id) == int(user_id):
-                    return True
-
-            except Exception:
-                continue
-
-        return False
 
 
     # ========================================================
@@ -1179,12 +1127,8 @@ class Security(commands.Cog):
         message: discord.Message
     ):
 
-        # Ignore bots
-
         if message.author.bot:
             return
-
-        # Ignore DMs
 
         if not message.guild:
             return
@@ -1192,7 +1136,6 @@ class Security(commands.Cog):
         settings = self.get_settings(
             message.guild.id
         )
-
 
         # ====================================================
         # DUPLICATE
@@ -1212,23 +1155,16 @@ class Security(commands.Cog):
                 key
             )
 
-            if (
-                old is not None
-                and
-                old == message.content
-            ):
+            if old == message.content:
 
                 try:
-
                     await message.delete()
-
                 except Exception:
                     pass
 
                 try:
 
                     warning = await message.channel.send(
-
                         f"⚠️ {message.author.mention} "
                         "**duplicate message detected.**"
                     )
@@ -1253,7 +1189,6 @@ class Security(commands.Cog):
                 )
             )
 
-
         # ====================================================
         # ANTI-LINK
         # ====================================================
@@ -1268,7 +1203,6 @@ class Security(commands.Cog):
             )
 
             link_patterns = (
-
                 "http://",
                 "https://",
                 "www.",
@@ -1277,10 +1211,9 @@ class Security(commands.Cog):
             )
 
             is_link = any(
-                pattern in content
-                for pattern in link_patterns
+                x in content
+                for x in link_patterns
             )
-
 
             if is_link:
 
@@ -1296,9 +1229,8 @@ class Security(commands.Cog):
 
                     return
 
-
                 # --------------------------------------------
-                # BOT OWNER BYPASS
+                # MANUAL BOT OWNER BYPASS
                 # --------------------------------------------
 
                 if message.author.id in BOT_OWNER_IDS:
@@ -1309,32 +1241,35 @@ class Security(commands.Cog):
 
                     return
 
-
                 # --------------------------------------------
-                # MUSIC COMMAND
+                # DISCORD.PY BOT OWNER BYPASS
                 # --------------------------------------------
 
-                # !play / ?play / other prefix:
-                # Check the first command word instead of
-                # only checking "!play".
+                try:
 
-                command_name = (
-                    content.split(
-                        maxsplit=1
-                    )[0]
-                    .lstrip(
-                        "!/?"
-                    )
-                )
+                    if await self.bot.is_owner(
+                        message.author
+                    ):
 
-                is_music_command = (
-                    command_name == "play"
-                )
+                        await self.bot.process_commands(
+                            message
+                        )
 
+                        return
+
+                except Exception:
+                    pass
 
                 # --------------------------------------------
                 # MUSIC WHITELIST
                 # --------------------------------------------
+
+                is_music_command = (
+
+                    content.startswith("!play")
+                    or
+                    content.startswith("/play")
+                )
 
                 if (
                     is_music_command
@@ -1345,17 +1280,11 @@ class Security(commands.Cog):
                     )
                 ):
 
-                    print(
-                        f"[SECURITY] Music whitelist bypass: "
-                        f"{message.author}"
-                    )
-
                     await self.bot.process_commands(
                         message
                     )
 
                     return
-
 
                 # --------------------------------------------
                 # DELETE LINK
@@ -1366,9 +1295,7 @@ class Security(commands.Cog):
                     await message.delete()
 
                 except Exception:
-
                     pass
-
 
                 # --------------------------------------------
                 # TIMEOUT
@@ -1400,7 +1327,6 @@ class Security(commands.Cog):
                         repr(e)
                     )
 
-
                 # --------------------------------------------
                 # WARNING
                 # --------------------------------------------
@@ -1418,11 +1344,9 @@ class Security(commands.Cog):
                     await warning.delete()
 
                 except Exception:
-
                     pass
 
                 return
-
 
         # ====================================================
         # COMMAND PROCESSING
@@ -1460,7 +1384,9 @@ class Security(commands.Cog):
     # ========================================================
 
     @commands.Cog.listener()
-    async def on_ready(self):
+    async def on_ready(
+        self
+    ):
 
         print(
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -1471,7 +1397,11 @@ class Security(commands.Cog):
         )
 
         print(
-            "👑 Server Owner + Bot Owners bypass"
+            "👑 Server Owner + Bot Owner bypass"
+        )
+
+        print(
+            f"🤖 Manual Bot Owners: {len(BOT_OWNER_IDS)}"
         )
 
         print(
