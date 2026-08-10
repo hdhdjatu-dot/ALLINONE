@@ -56,10 +56,10 @@ FFMPEG_PATH = find_ffmpeg()
 # =========================================================
 
 YTDLP_OPTIONS = {
-    'format': 'bestaudio/best',
+    'format': 'bestaudio/best/m4a/mp4/worst',
     'extractaudio': True,
     'audioformat': 'mp3',
-    'cookiefile': 'cookies.txt',  # <--- Yeh line add karein
+    'cookiefile': 'cookies.txt',
     'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
     'restrictfilenames': True,
     'noplaylist': True,
@@ -72,12 +72,8 @@ YTDLP_OPTIONS = {
     'source_address': '0.0.0.0',
     'extractor_args': {
         'youtube': {
-            'player_client': ['android', 'web']
+            'player_client': ['mweb', 'android', 'web']
         }
-    
-
-    
-
     },
 }
 
