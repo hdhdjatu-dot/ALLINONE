@@ -64,6 +64,7 @@ class HSLBot(commands.Bot):
         # =====================================
 
         guild_id = 1519933809402056805
+        guild_id = 1435943252455981080
 
         guild = discord.Object(id=guild_id)
 
