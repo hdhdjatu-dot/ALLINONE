@@ -10,6 +10,44 @@ import yt_dlp
 
 
 # =========================================================
+# YOUTUBE COOKIES - RAILWAY
+# =========================================================
+
+YOUTUBE_COOKIES = os.getenv("YOUTUBE_COOKIES")
+
+COOKIE_FILE = None
+
+if YOUTUBE_COOKIES:
+
+    COOKIE_FILE = "/tmp/youtube_cookies.txt"
+
+    try:
+
+        with open(
+            COOKIE_FILE,
+            "w",
+            encoding="utf-8"
+        ) as f:
+            f.write(YOUTUBE_COOKIES)
+
+        print("[MUSIC] YouTube cookies file created.")
+        print(f"[MUSIC] Cookie file: {COOKIE_FILE}")
+
+    except Exception as e:
+
+        print(
+            "[MUSIC] Cookie file creation error:",
+            repr(e)
+        )
+
+else:
+
+    print(
+        "[MUSIC] WARNING: YOUTUBE_COOKIES variable is missing."
+    )
+
+
+# =========================================================
 # HSL GIF
 # =========================================================
 
@@ -19,10 +57,9 @@ HSL_GIF = (
     "iBILBPeCHDVuELjOND/giphy.gif"
 )
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-COOKIE_PATH = os.path.join(BASE_DIR, 'cookies.txt')
+
 # =========================================================
-# FFMPEG
+# FIND FFMPEG
 # =========================================================
 
 def find_ffmpeg():
@@ -30,22 +67,37 @@ def find_ffmpeg():
     ffmpeg = shutil.which("ffmpeg")
 
     if ffmpeg:
-        print(f"[MUSIC] FFmpeg found: {ffmpeg}")
+
+        print(
+            f"[MUSIC] FFmpeg found: {ffmpeg}"
+        )
+
         return ffmpeg
 
-    paths = [
+    possible_paths = [
+
         r"C:\ffmpeg\bin\ffmpeg.exe",
+
         r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+
         r"C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe",
+
     ]
 
-    for path in paths:
+    for path in possible_paths:
 
         if os.path.isfile(path):
-            print(f"[MUSIC] FFmpeg found: {path}")
+
+            print(
+                f"[MUSIC] FFmpeg found: {path}"
+            )
+
             return path
 
-    print("[MUSIC] WARNING: FFmpeg not found.")
+    print(
+        "[MUSIC] WARNING: FFmpeg was not found."
+    )
+
     return "ffmpeg"
 
 
@@ -53,34 +105,65 @@ FFMPEG_PATH = find_ffmpeg()
 
 
 # =========================================================
-# YT-DLP
+# YT-DLP OPTIONS
 # =========================================================
 
 YTDLP_OPTIONS = {
-    'format': 'bestaudio/best/m4a/mp4/worst',
-    'extractaudio': True,
-    'audioformat': 'mp3',
-    'cookiefile': COOKIE_PATH,  # <--- Yahan COOKIE_PATH pass karein
-    'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
-    'restrictfilenames': True,
-    'noplaylist': True,
-    'nocheckcertificate': True,
-    'ignoreerrors': False,
-    'logtostderr': False,
-    'quiet': True,
-    'no_warnings': True,
-    'default_search': 'auto',
-    'source_address': '0.0.0.0',
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['mweb', 'android', 'web']
-        }
+
+    "quiet": True,
+
+    "no_warnings": True,
+
+    "noplaylist": True,
+
+    "source_address": "0.0.0.0",
+
+    "http_headers": {
+
+        "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 "
+            "(KHTML, like Gecko) "
+            "Chrome/151.0.0.0 Safari/537.36"
+
     },
+
+    "extractor_args": {
+
+        "youtube": {
+
+            "player_client": [
+                "web",
+                "android"
+            ]
+
+        }
+
+    }
+
 }
 
 
+# =========================================================
+# APPLY COOKIES
+# =========================================================
 
-    
+if (
+    COOKIE_FILE
+    and os.path.isfile(COOKIE_FILE)
+):
+
+    YTDLP_OPTIONS["cookiefile"] = COOKIE_FILE
+
+    print(
+        "[MUSIC] yt-dlp cookiefile enabled."
+    )
+
+else:
+
+    print(
+        "[MUSIC] yt-dlp cookiefile NOT enabled."
+    )
 
 
 # =========================================================
@@ -98,8 +181,11 @@ class Song:
     ):
 
         self.title = title
+
         self.url = url
+
         self.thumbnail = thumbnail
+
         self.requester = requester
 
 
@@ -114,6 +200,7 @@ class MusicPlayer:
         self.bot = bot
 
         self.voice = None
+
         self.text_channel = None
 
         self.queue = deque()
@@ -124,7 +211,6 @@ class MusicPlayer:
 
         self.loop = False
 
-        # Autoplay ON by default
         self.autoplay = True
 
         self.starting = False
@@ -138,36 +224,62 @@ class MusicPlayer:
     # RESOLVE SONG
     # =====================================================
 
-    async def resolve_song(self, query, requester):
+    async def resolve_song(
+        self,
+        query,
+        requester
+    ):
 
         loop = asyncio.get_running_loop()
 
         def extract():
 
-            options = dict(YTDLP_OPTIONS)
+            options = dict(
+                YTDLP_OPTIONS
+            )
+
             options["skip_download"] = True
 
+            query = query.strip()
+
+            # ---------------------------------------------
+            # DIRECT URL
+            # ---------------------------------------------
+
             if query.startswith(
-                ("http://", "https://")
+                (
+                    "http://",
+                    "https://"
+                )
             ):
 
-                target = query.strip()
+                target = query
 
                 print(
                     "[MUSIC] Direct URL detected:"
                 )
 
-                print(target)
+                print(
+                    target
+                )
+
+            # ---------------------------------------------
+            # SEARCH
+            # ---------------------------------------------
 
             else:
 
-                target = f"ytsearch1:{query}"
+                target = (
+                    f"ytsearch1:{query}"
+                )
 
                 print(
                     f"[MUSIC] Searching YouTube: {query}"
                 )
 
-            with yt_dlp.YoutubeDL(options) as ydl:
+            with yt_dlp.YoutubeDL(
+                options
+            ) as ydl:
 
                 info = ydl.extract_info(
                     target,
@@ -175,35 +287,49 @@ class MusicPlayer:
                 )
 
                 if not info:
+
                     return None
 
                 if "entries" in info:
 
                     entries = [
-                        x for x in info["entries"]
-                        if x
+                        entry
+                        for entry in info["entries"]
+                        if entry
                     ]
 
                     if not entries:
+
                         return None
 
                     info = entries[0]
 
                 return {
-                    "title": info.get(
-                        "title",
-                        "Unknown Song"
-                    ),
 
-                    "url": (
-                        info.get("webpage_url")
-                        or info.get("original_url")
-                        or query
-                    ),
+                    "title":
+                        info.get(
+                            "title",
+                            "Unknown Song"
+                        ),
 
-                    "thumbnail": info.get(
-                        "thumbnail"
-                    )
+                    "url":
+                        (
+                            info.get(
+                                "webpage_url"
+                            )
+                            or
+                            info.get(
+                                "original_url"
+                            )
+                            or
+                            query
+                        ),
+
+                    "thumbnail":
+                        info.get(
+                            "thumbnail"
+                        )
+
                 }
 
         try:
@@ -223,6 +349,7 @@ class MusicPlayer:
             return None
 
         if not data:
+
             return None
 
         print(
@@ -234,35 +361,53 @@ class MusicPlayer:
         )
 
         return Song(
+
             data["title"],
+
             data["url"],
+
             data["thumbnail"],
+
             requester
+
         )
 
 
     # =====================================================
-    # AUDIO STREAM
+    # GET AUDIO STREAM
     # =====================================================
 
-    async def get_audio_stream(self, song):
+    async def get_audio_stream(
+        self,
+        song
+    ):
 
         loop = asyncio.get_running_loop()
 
         def extract():
 
-            options = dict(YTDLP_OPTIONS)
+            options = dict(
+                YTDLP_OPTIONS
+            )
 
             options.update({
+
                 "skip_download": True,
 
                 "format":
                     "bestaudio[ext=webm]/"
                     "bestaudio[ext=m4a]/"
                     "bestaudio/best"
+
             })
 
-            with yt_dlp.YoutubeDL(options) as ydl:
+            print(
+                "[MUSIC] Extracting fresh audio stream..."
+            )
+
+            with yt_dlp.YoutubeDL(
+                options
+            ) as ydl:
 
                 info = ydl.extract_info(
                     song.url,
@@ -270,21 +415,34 @@ class MusicPlayer:
                 )
 
                 if not info:
+
                     return None
 
                 if "entries" in info:
 
                     entries = [
-                        x for x in info["entries"]
-                        if x
+                        entry
+                        for entry in info["entries"]
+                        if entry
                     ]
 
                     if not entries:
+
                         return None
 
                     info = entries[0]
 
-                return info.get("url")
+                stream_url = info.get(
+                    "url"
+                )
+
+                if not stream_url:
+
+                    raise RuntimeError(
+                        "No audio stream URL returned."
+                    )
+
+                return stream_url
 
         try:
 
@@ -294,8 +452,9 @@ class MusicPlayer:
             )
 
             if stream:
+
                 print(
-                    "[MUSIC] Audio stream obtained."
+                    "[MUSIC] Audio stream obtained successfully."
                 )
 
             return stream
@@ -303,7 +462,7 @@ class MusicPlayer:
         except Exception as e:
 
             print(
-                "[MUSIC] AUDIO ERROR:",
+                "[MUSIC] AUDIO EXTRACTION ERROR:",
                 repr(e)
             )
 
@@ -316,33 +475,75 @@ class MusicPlayer:
 
     async def play_next(self):
 
+        print(
+            "[MUSIC] play_next() called"
+        )
+
         if not self.voice:
+
+            print(
+                "[MUSIC] No voice client."
+            )
+
             return
 
         if not self.voice.is_connected():
+
+            print(
+                "[MUSIC] Voice client disconnected."
+            )
+
             return
 
         if self.starting:
+
+            print(
+                "[MUSIC] Already starting."
+            )
+
             return
 
         self.starting = True
 
         try:
 
+            # ---------------------------------------------
             # LOOP
-            if self.loop and self.current:
+            # ---------------------------------------------
+
+            if (
+                self.loop
+                and self.current
+            ):
 
                 song = self.current
 
+                print(
+                    "[MUSIC] Looping current song."
+                )
+
+            # ---------------------------------------------
             # QUEUE
+            # ---------------------------------------------
+
             elif self.queue:
 
                 song = self.queue.popleft()
 
                 self.current = song
 
+                print(
+                    f"[MUSIC] Queue selected: {song.title}"
+                )
+
+            # ---------------------------------------------
             # AUTOPLAY
-            elif self.autoplay and self.current:
+            # ---------------------------------------------
+
+            elif (
+                self.autoplay
+                and self.current
+            ):
 
                 print(
                     "[MUSIC] Autoplay: searching related song..."
@@ -357,19 +558,37 @@ class MusicPlayer:
 
                 if not song:
 
+                    print(
+                        "[MUSIC] Autoplay failed."
+                    )
+
                     self.current = None
+
                     return
 
                 self.current = song
 
+            # ---------------------------------------------
+            # NOTHING
+            # ---------------------------------------------
+
             else:
 
                 self.current = None
+
+                print(
+                    "[MUSIC] Queue empty."
+                )
+
                 return
 
             print(
                 f"[MUSIC] Preparing: {song.title}"
             )
+
+            # ---------------------------------------------
+            # AUDIO STREAM
+            # ---------------------------------------------
 
             stream_url = await self.get_audio_stream(
                 song
@@ -382,7 +601,12 @@ class MusicPlayer:
                 )
 
                 self.current = None
+
                 return
+
+            # ---------------------------------------------
+            # STOP OLD SOURCE
+            # ---------------------------------------------
 
             if (
                 self.voice.is_playing()
@@ -391,7 +615,13 @@ class MusicPlayer:
 
                 self.voice.stop()
 
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(
+                    0.3
+                )
+
+            # ---------------------------------------------
+            # FFMPEG
+            # ---------------------------------------------
 
             before_options = (
                 "-reconnect 1 "
@@ -406,34 +636,70 @@ class MusicPlayer:
             )
 
             source = discord.FFmpegPCMAudio(
+
                 stream_url,
+
                 executable=FFMPEG_PATH,
+
                 before_options=before_options,
+
                 options=ffmpeg_options
+
             )
 
             source = discord.PCMVolumeTransformer(
+
                 source,
+
                 volume=self.volume
+
             )
+
+            # ---------------------------------------------
+            # TOKEN
+            # ---------------------------------------------
 
             self.play_token += 1
 
             token = self.play_token
+
+            # ---------------------------------------------
+            # CALLBACK
+            # ---------------------------------------------
 
             def after_play(error):
 
                 if error:
 
                     print(
-                        "[MUSIC] Playback error:",
+                        "[MUSIC] Playback callback error:",
                         repr(error)
                     )
 
-                asyncio.run_coroutine_threadsafe(
-                    self.finished(token),
-                    self.bot.loop
-                )
+                try:
+
+                    asyncio.run_coroutine_threadsafe(
+
+                        self.finished(token),
+
+                        self.bot.loop
+
+                    )
+
+                except Exception as e:
+
+                    print(
+                        "[MUSIC] Callback error:",
+                        repr(e)
+                    )
+
+            # ---------------------------------------------
+            # START
+            # ---------------------------------------------
+
+            print(
+                "[MUSIC] Starting FFmpeg playback..."
+            )
 
             self.voice.play(
                 source,
@@ -462,12 +728,22 @@ class MusicPlayer:
     # FINISHED
     # =====================================================
 
-    async def finished(self, token):
+    async def finished(
+        self,
+        token
+    ):
 
         if token != self.play_token:
+
             return
 
-        await asyncio.sleep(0.7)
+        print(
+            "[MUSIC] Song finished."
+        )
+
+        await asyncio.sleep(
+            0.7
+        )
 
         if (
             self.voice
@@ -478,39 +754,54 @@ class MusicPlayer:
 
 
     # =====================================================
-    # NOW PLAYING
+    # NOW PLAYING EMBED
     # =====================================================
 
-    async def send_now_playing(self):
+    async def send_now_playing(
+        self
+    ):
 
         if not self.text_channel:
+
             return
 
         if not self.current:
+
             return
 
         song = self.current
 
         embed = discord.Embed(
+
             title="🎵 HSL-CORP MUSIC",
 
             description=(
+
                 "## 🎶 NOW PLAYING\n\n"
+
                 f"**[{song.title}]"
                 f"({song.url})**\n\n"
+
                 "━━━━━━━━━━━━━━━━━━━━\n"
+
                 f"👤 Requested by: "
                 f"{song.requester.mention}\n"
+
                 f"🔊 Volume: "
                 f"{int(self.volume * 100)}%\n"
+
                 f"🔁 Loop: "
                 f"{'🟢 ON' if self.loop else '🔴 OFF'}\n"
+
                 f"🤖 Autoplay: "
                 f"{'🟢 ON' if self.autoplay else '🔴 OFF'}\n"
+
                 "━━━━━━━━━━━━━━━━━━━━"
+
             ),
 
             color=discord.Color.blurple()
+
         )
 
         if song.thumbnail:
@@ -536,17 +827,25 @@ class MusicPlayer:
             if self.now_playing_message:
 
                 await self.now_playing_message.edit(
+
                     embed=embed,
+
                     view=view
+
                 )
 
             else:
 
                 self.now_playing_message = (
+
                     await self.text_channel.send(
+
                         embed=embed,
+
                         view=view
+
                     )
+
                 )
 
         except Exception as e:
@@ -561,9 +860,14 @@ class MusicPlayer:
 # MUSIC BUTTONS
 # =========================================================
 
-class MusicControlView(discord.ui.View):
+class MusicControlView(
+    discord.ui.View
+):
 
-    def __init__(self, player):
+    def __init__(
+        self,
+        player
+    ):
 
         super().__init__(
             timeout=None
@@ -582,9 +886,13 @@ class MusicControlView(discord.ui.View):
         style=discord.ButtonStyle.primary
     )
     async def pause_resume(
+
         self,
+
         interaction: discord.Interaction,
+
         button: discord.ui.Button
+
     ):
 
         voice = self.player.voice
@@ -592,8 +900,11 @@ class MusicControlView(discord.ui.View):
         if not voice:
 
             return await interaction.response.send_message(
+
                 "❌ Music is not playing.",
+
                 ephemeral=True
+
             )
 
         if voice.is_playing():
@@ -619,8 +930,11 @@ class MusicControlView(discord.ui.View):
         else:
 
             await interaction.response.send_message(
+
                 "❌ Music is not playing.",
+
                 ephemeral=True
+
             )
 
 
@@ -634,16 +948,23 @@ class MusicControlView(discord.ui.View):
         style=discord.ButtonStyle.success
     )
     async def skip(
+
         self,
+
         interaction: discord.Interaction,
+
         button: discord.ui.Button
+
     ):
 
         if not self.player.voice:
 
             return await interaction.response.send_message(
+
                 "❌ Music is not playing.",
+
                 ephemeral=True
+
             )
 
         await interaction.response.defer()
@@ -658,9 +979,12 @@ class MusicControlView(discord.ui.View):
             self.player.voice.stop()
 
         self.player.starting = False
+
         self.player.current = None
 
-        await asyncio.sleep(0.4)
+        await asyncio.sleep(
+            0.4
+        )
 
         await self.player.play_next()
 
@@ -675,22 +999,37 @@ class MusicControlView(discord.ui.View):
         style=discord.ButtonStyle.secondary
     )
     async def loop(
+
         self,
+
         interaction: discord.Interaction,
+
         button: discord.ui.Button
+
     ):
 
-        self.player.loop = not self.player.loop
+        self.player.loop = (
+            not self.player.loop
+        )
 
         status = (
+
             "🟢 ON"
+
             if self.player.loop
-            else "🔴 OFF"
+
+            else
+
+            "🔴 OFF"
+
         )
 
         await interaction.response.send_message(
+
             f"🔁 Loop: **{status}**",
+
             ephemeral=True
+
         )
 
         await self.player.send_now_playing()
@@ -706,22 +1045,37 @@ class MusicControlView(discord.ui.View):
         style=discord.ButtonStyle.secondary
     )
     async def autoplay(
+
         self,
+
         interaction: discord.Interaction,
+
         button: discord.ui.Button
+
     ):
 
-        self.player.autoplay = not self.player.autoplay
+        self.player.autoplay = (
+            not self.player.autoplay
+        )
 
         status = (
+
             "🟢 ON"
+
             if self.player.autoplay
-            else "🔴 OFF"
+
+            else
+
+            "🔴 OFF"
+
         )
 
         await interaction.response.send_message(
+
             f"🤖 Autoplay: **{status}**",
+
             ephemeral=True
+
         )
 
         await self.player.send_now_playing()
@@ -737,9 +1091,13 @@ class MusicControlView(discord.ui.View):
         style=discord.ButtonStyle.danger
     )
     async def stop(
+
         self,
+
         interaction: discord.Interaction,
+
         button: discord.ui.Button
+
     ):
 
         await interaction.response.defer()
@@ -766,6 +1124,7 @@ class MusicControlView(discord.ui.View):
                 await self.player.voice.disconnect()
 
             except Exception:
+
                 pass
 
         self.player.voice = None
@@ -773,12 +1132,17 @@ class MusicControlView(discord.ui.View):
         try:
 
             await interaction.message.edit(
+
                 content="⏹️ **Music stopped & queue cleared.**",
+
                 embed=None,
+
                 view=None
+
             )
 
         except Exception:
+
             pass
 
 
@@ -788,14 +1152,24 @@ class MusicControlView(discord.ui.View):
 
 class Music(commands.Cog):
 
-    def __init__(self, bot):
+    def __init__(
+        self,
+        bot
+    ):
 
         self.bot = bot
 
         self.players = {}
 
 
-    def get_player(self, guild_id):
+    # =====================================================
+    # GET PLAYER
+    # =====================================================
+
+    def get_player(
+        self,
+        guild_id
+    ):
 
         if guild_id not in self.players:
 
@@ -815,24 +1189,35 @@ class Music(commands.Cog):
         description="Play a YouTube song"
     )
     async def play(
+
         self,
+
         ctx,
+
         *,
+
         query: str
+
     ):
 
         if not ctx.guild:
 
             return await ctx.send(
+
                 "❌ This command can only be used in a server.",
+
                 delete_after=4
+
             )
 
         if not ctx.author.voice:
 
             return await ctx.send(
+
                 "❌ Please join a voice channel first.",
+
                 delete_after=4
+
             )
 
         player = self.get_player(
@@ -841,7 +1226,13 @@ class Music(commands.Cog):
 
         player.text_channel = ctx.channel
 
-        voice_channel = ctx.author.voice.channel
+        voice_channel = (
+            ctx.author.voice.channel
+        )
+
+        # ---------------------------------------------
+        # CONNECT
+        # ---------------------------------------------
 
         try:
 
@@ -867,28 +1258,40 @@ class Music(commands.Cog):
         except Exception as e:
 
             print(
-                "[MUSIC] VOICE ERROR:",
+                "[MUSIC] VOICE CONNECTION ERROR:",
                 repr(e)
             )
 
             return await ctx.send(
+
                 "❌ Failed to connect to the voice channel.",
+
                 delete_after=5
+
             )
+
+        # ---------------------------------------------
+        # RESOLVE
+        # ---------------------------------------------
 
         loading = await ctx.send(
             "🔎 **Loading song...**"
         )
 
         song = await player.resolve_song(
+
             query,
+
             ctx.author
+
         )
 
         if not song:
 
             return await loading.edit(
+
                 content="❌ Song not found."
+
             )
 
         try:
@@ -896,41 +1299,78 @@ class Music(commands.Cog):
             await loading.delete()
 
         except Exception:
+
             pass
 
+        # ---------------------------------------------
+        # CHECK CURRENT PLAYBACK
+        # ---------------------------------------------
+
         was_playing = (
+
             player.starting
+
             or (
+
                 player.voice
+
                 and (
+
                     player.voice.is_playing()
-                    or player.voice.is_paused()
+
+                    or
+
+                    player.voice.is_paused()
+
                 )
+
             )
-            or player.current is not None
+
+            or
+
+            player.current is not None
+
         )
 
-        player.queue.append(song)
+        # ---------------------------------------------
+        # ADD QUEUE
+        # ---------------------------------------------
+
+        player.queue.append(
+            song
+        )
 
         print(
             f"[MUSIC] Added to queue: {song.title}"
         )
 
+        # ---------------------------------------------
+        # ALREADY PLAYING
+        # ---------------------------------------------
+
         if was_playing:
 
-            position = len(player.queue)
+            position = len(
+                player.queue
+            )
 
             embed = discord.Embed(
+
                 title="🎵 ADDED TO QUEUE",
 
                 description=(
+
                     f"**[{song.title}]"
                     f"({song.url})**\n\n"
+
                     f"👤 {ctx.author.mention}\n"
+
                     f"📍 Position: `{position}`"
+
                 ),
 
                 color=discord.Color.green()
+
             )
 
             if song.thumbnail:
@@ -944,13 +1384,22 @@ class Music(commands.Cog):
             )
 
             return await ctx.send(
+
                 embed=embed,
+
                 delete_after=8
+
             )
+
+        # ---------------------------------------------
+        # START
+        # ---------------------------------------------
 
         await player.play_next()
 
-        await asyncio.sleep(1)
+        await asyncio.sleep(
+            1
+        )
 
         if (
             player.voice
@@ -958,9 +1407,16 @@ class Music(commands.Cog):
             and not player.starting
         ):
 
+            print(
+                "[MUSIC] WARNING: Audio failed to start."
+            )
+
             await ctx.send(
+
                 "❌ **Audio failed to start.**",
+
                 delete_after=6
+
             )
 
 
@@ -984,8 +1440,11 @@ class Music(commands.Cog):
         if not player.voice:
 
             return await ctx.send(
+
                 "❌ Music is not playing.",
+
                 delete_after=4
+
             )
 
         player.play_token += 1
@@ -998,9 +1457,12 @@ class Music(commands.Cog):
             player.voice.stop()
 
         player.current = None
+
         player.starting = False
 
-        await asyncio.sleep(0.4)
+        await asyncio.sleep(
+            0.4
+        )
 
         await player.play_next()
 
@@ -1030,13 +1492,19 @@ class Music(commands.Cog):
             player.voice.pause()
 
             return await ctx.send(
+
                 "⏸️ **Music paused.**",
+
                 delete_after=3
+
             )
 
         await ctx.send(
+
             "❌ Music is not playing.",
+
             delete_after=3
+
         )
 
 
@@ -1065,13 +1533,19 @@ class Music(commands.Cog):
             player.voice.resume()
 
             return await ctx.send(
+
                 "▶️ **Music resumed.**",
+
                 delete_after=3
+
             )
 
         await ctx.send(
+
             "❌ Music is not paused.",
+
             delete_after=3
+
         )
 
 
@@ -1081,7 +1555,7 @@ class Music(commands.Cog):
 
     @commands.hybrid_command(
         name="stop",
-        description="Stop music"
+        description="Stop music and clear queue"
     )
     async def stop(
         self,
@@ -1114,13 +1588,19 @@ class Music(commands.Cog):
                 await player.voice.disconnect()
 
             except Exception:
+
                 pass
 
         player.voice = None
 
+        player.now_playing_message = None
+
         await ctx.send(
+
             "⏹️ **Music stopped & queue cleared.**",
+
             delete_after=4
+
         )
 
 
@@ -1144,25 +1624,40 @@ class Music(commands.Cog):
         if not player.queue:
 
             return await ctx.send(
+
                 "📭 **Queue is empty.**",
+
                 delete_after=4
+
             )
 
         lines = []
 
         for index, song in enumerate(
+
             list(player.queue)[:15],
+
             1
+
         ):
 
             lines.append(
-                f"`{index}.` **{song.title[:70]}**"
+
+                f"`{index}.` "
+                f"**{song.title[:70]}**"
+
             )
 
         embed = discord.Embed(
+
             title="📜 HSL-CORP MUSIC QUEUE",
-            description="\n".join(lines),
+
+            description="\n".join(
+                lines
+            ),
+
             color=discord.Color.blurple()
+
         )
 
         embed.set_thumbnail(
@@ -1183,48 +1678,68 @@ class Music(commands.Cog):
         description="Change music volume"
     )
     async def volume(
+
         self,
+
         ctx,
+
         amount: int
+
     ):
 
-        if amount < 0 or amount > 200:
+        if (
+            amount < 0
+            or amount > 200
+        ):
 
             return await ctx.send(
+
                 "❌ Volume must be between `0` and `200`.",
+
                 delete_after=4
+
             )
 
         player = self.get_player(
             ctx.guild.id
         )
 
-        player.volume = amount / 100
+        player.volume = (
+            amount / 100
+        )
 
         if player.voice:
 
             source = player.voice.source
 
             if isinstance(
+
                 source,
+
                 discord.PCMVolumeTransformer
+
             ):
 
-                source.volume = amount / 100
+                source.volume = (
+                    amount / 100
+                )
 
         await ctx.send(
+
             f"🔊 **Volume set to {amount}%**",
+
             delete_after=4
+
         )
 
 
     # =====================================================
-    # LOOP COMMAND
+    # LOOP
     # =====================================================
 
     @commands.hybrid_command(
         name="loop",
-        description="Toggle loop"
+        description="Toggle music loop"
     )
     async def loop(
         self,
@@ -1235,22 +1750,33 @@ class Music(commands.Cog):
             ctx.guild.id
         )
 
-        player.loop = not player.loop
+        player.loop = (
+            not player.loop
+        )
 
         status = (
+
             "🟢 ON"
+
             if player.loop
-            else "🔴 OFF"
+
+            else
+
+            "🔴 OFF"
+
         )
 
         await ctx.send(
+
             f"🔁 **Loop: {status}**",
+
             delete_after=4
+
         )
 
 
     # =====================================================
-    # AUTOPLAY COMMAND
+    # AUTOPLAY
     # =====================================================
 
     @commands.hybrid_command(
@@ -1266,22 +1792,33 @@ class Music(commands.Cog):
             ctx.guild.id
         )
 
-        player.autoplay = not player.autoplay
+        player.autoplay = (
+            not player.autoplay
+        )
 
         status = (
+
             "🟢 ON"
+
             if player.autoplay
-            else "🔴 OFF"
+
+            else
+
+            "🔴 OFF"
+
         )
 
         await ctx.send(
+
             f"🤖 **Autoplay: {status}**",
+
             delete_after=4
+
         )
 
 
     # =====================================================
-    # NOW PLAYING COMMAND
+    # NOW PLAYING
     # =====================================================
 
     @commands.hybrid_command(
@@ -1296,6 +1833,16 @@ class Music(commands.Cog):
         player = self.get_player(
             ctx.guild.id
         )
+
+        if not player.current:
+
+            return await ctx.send(
+
+                "❌ Nothing is playing.",
+
+                delete_after=4
+
+            )
 
         await player.send_now_playing()
 
