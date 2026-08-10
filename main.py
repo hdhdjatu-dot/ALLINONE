@@ -4,6 +4,17 @@ from config import TOKEN
 from cogs.database import Database
 from cogs.database import Database
 import os
+
+
+# Load Opus for audio playback
+if not discord.opus.is_loaded():
+    try:
+        discord.opus.load_opus('libopus.so.0')
+    except Exception:
+        try:
+            discord.opus.load_opus('libopus.so')
+        except Exception:
+            pass
 TOKEN = os.getenv("TOKEN")
 class HSLBot(commands.Bot):
  
