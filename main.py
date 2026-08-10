@@ -63,7 +63,7 @@ class HSLBot(commands.Bot):
         # SERVER ID
         # =====================================
 
-        guild_ids = [1435943252455001000, 1531880443383906426]
+        guild_ids = [1435943252455001000,1519933809402056805]
         
        # Sync commands to multiple servers
         for guild_id in guild_ids:
