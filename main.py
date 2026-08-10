@@ -1,10 +1,8 @@
+import os
 import discord
 from discord.ext import commands
 from config import TOKEN
 from cogs.database import Database
-from cogs.database import Database
-import os
-
 
 # Load Opus for audio playback
 if not discord.opus.is_loaded():
@@ -15,9 +13,11 @@ if not discord.opus.is_loaded():
             discord.opus.load_opus('libopus.so')
         except Exception:
             pass
-TOKEN = os.getenv("TOKEN")
+
+TOKEN = os.getenv("TOKEN") or TOKEN
+
 class HSLBot(commands.Bot):
- 
+
     def __init__(self):
         intents = discord.Intents.all()
         
@@ -29,37 +29,30 @@ class HSLBot(commands.Bot):
         print("✅ database.py loaded")
               
     async def setup_hook(self):
- 
+
         print("🔄 Loading utility.py...")
-
         await self.load_extension("cogs.utility")
-
         print("✅ utility.py loaded")
 
         print("🔄 Loading security.py...")
-
         await self.load_extension("cogs.security")
-
         print("✅ security.py loaded")
         
         print("🔄 Loading warnings.py...")
-    
         await self.load_extension("cogs.warnings")
-    
         print("✅ warnings.py loaded")
         
         print("🔄 Loading automod.py...")
-       
+        # await self.load_extension("cogs.automod")
         print("✅ automod.py loaded")
         
         print("🔄 Loading logging.py...")
         await self.load_extension("cogs.logging")
         print("✅ logging.py loaded")
         
-        print("🔄 Loading database.py...")
-        
         print("🔄 Loading music.py...")
-        await bot.load_extension("cogs.music")
+        await self.load_extension("cogs.music")
+        print("✅ music.py loaded")
         
         print("🔄 Loading ticket.py...")
         await self.load_extension("cogs.ticket")
@@ -68,24 +61,17 @@ class HSLBot(commands.Bot):
         print("🔄 Loading welcome.py...")
         await self.load_extension("cogs.welcome")
         print("✅ welcome.py loaded")
+           
+        guild_ids = [
+            1519933809402056805,  # Server 1
+            1435943252455981080,   # Server 2
+        ]
 
-
-        # =====================================
-        # SERVER ID
-        # =====================================
-
-        guild_id = 1519933809402056805
-        
-
-        guild = discord.Object(id=guild_id)
-
-        # Copy commands to this server
-        self.tree.copy_global_to(guild=guild)
-
-        # Sync commands
-        synced = await self.tree.sync(guild=guild)
-
-        print(f"✅ Synced {len(synced)} commands to server")
+        for guild_id in guild_ids:
+            guild = discord.Object(id=guild_id)
+            self.tree.copy_global_to(guild=guild)
+            synced = await self.tree.sync(guild=guild)
+            print(f"✅ Synced {len(synced)} commands to server {guild_id}")
 
 
 # ============================================================
@@ -109,10 +95,6 @@ class HSLHelp(commands.HelpCommand):
             ),
             color=discord.Color.blurple()
         )
-
-        # ----------------------------------------------------
-        # CATEGORIES
-        # ----------------------------------------------------
 
         category_emojis = {
             "Music": "🎵",
@@ -180,10 +162,7 @@ class HSLHelp(commands.HelpCommand):
             embed=embed
         )
 
-    async def send_command_help(
-        self,
-        command
-    ):
+    async def send_command_help(self, command):
 
         embed = discord.Embed(
             title=f"📖 !{command.name}",
@@ -213,10 +192,7 @@ class HSLHelp(commands.HelpCommand):
             embed=embed
         )
 
-    async def send_cog_help(
-        self,
-        cog
-    ):
+    async def send_cog_help(self, cog):
 
         embed = discord.Embed(
             title=f"📂 {cog.qualified_name}",
@@ -251,7 +227,7 @@ class HSLHelp(commands.HelpCommand):
 
 
 # ============================================================
-# BOT
+# BOT INSTANCE & EVENTS
 # ============================================================
 
 bot = HSLBot()
@@ -260,22 +236,17 @@ bot = HSLBot()
 bot.help_command = HSLHelp()
 
 
-
-
 @bot.event
 async def on_ready():
 
     print("=" * 45)
-
     print(f"🤖 Bot: {bot.user}")
     print(f"🆔 ID: {bot.user.id}")
     print(f"🌐 Servers: {len(bot.guilds)}")
-
     print("=" * 45)
 
 
 if not TOKEN:
-    raise ValueError("❌ DISCORD_TOKEN missing in .env!")
-
+    raise ValueError("❌ DISCORD_TOKEN missing in environment or config!")
 
 bot.run(TOKEN)
