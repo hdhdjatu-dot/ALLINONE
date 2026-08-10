@@ -1,36 +1,44 @@
 import asyncio
 import os
 import shutil
+import ctypes
+import ctypes.util
 from collections import deque
 import discord
 import discord.opus
 from discord.ext import commands
 import yt_dlp
 
-if not discord.opus.is_loaded():
 
-    opus_names = [
-        "opus",
+
+def load_opus():
+    if discord.opus.is_loaded():
+        print("[MUSIC] ✅ Opus codec already loaded.")
+        return True
+
+    candidates = [
         "libopus.so.0",
         "libopus.so",
+        "opus",
     ]
 
-    for name in opus_names:
+    for name in candidates:
         try:
             path = ctypes.util.find_library(name)
 
             if path:
                 discord.opus.load_opus(path)
-                print(f"[MUSIC] Opus loaded: {path}")
-                break
+                print(f"[MUSIC] ✅ Opus loaded: {path}")
+                return True
 
         except Exception as e:
             print(f"[MUSIC] Opus load attempt failed: {e}")
 
-if discord.opus.is_loaded():
-    print("[MUSIC] ✅ Opus codec loaded.")
-else:
     print("[MUSIC] ❌ Opus codec NOT loaded.")
+    return False
+
+
+load_opus()
 
 # =========================================================
 # YOUTUBE COOKIES
