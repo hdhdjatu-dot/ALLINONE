@@ -1,4 +1,4 @@
-import discord
+
 from discord.ext import commands
 from config import TOKEN
 from cogs.database import Database
