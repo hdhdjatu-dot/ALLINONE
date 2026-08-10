@@ -65,15 +65,12 @@ class HSLBot(commands.Bot):
 
         guild_ids = [1519933809402056805, 1435943252455001000, 1531880443383906426]
         
-        guild = discord.Object(id=guild_ids)
-
-        # Copy commands to this server
-        self.tree.copy_global_to(guild=guild)
-
-        # Sync commands
-        synced = await self.tree.sync(guild=guild)
-
-        print(f"✅ Synced {len(synced)} commands to server")
+       # Sync commands to multiple servers
+        for guild_id in guild_ids:
+            guild = discord.Object(id=guild_id)
+            self.tree.copy_global_to(guild=guild)
+            synced = await self.tree.sync(guild=guild)
+            print(f"✅ Synced {len(synced)} commands to server {guild_id}")
 
 
 # ============================================================
