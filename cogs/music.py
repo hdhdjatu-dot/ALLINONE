@@ -55,7 +55,7 @@ FFMPEG_PATH = find_ffmpeg()
 # YT-DLP
 # =========================================================
 
-YTDL_OPTIONS = {
+YTDLP_OPTIONS = {
     'format': 'bestaudio/best',
     'extractaudio': True,
     'audioformat': 'mp3',
@@ -69,11 +69,12 @@ YTDL_OPTIONS = {
     'no_warnings': True,
     'default_search': 'auto',
     'source_address': '0.0.0.0',
-    # YT-DLP ko android/web_creator client mimic karne ke liye:
     'extractor_args': {
         'youtube': {
             'player_client': ['android', 'web']
         }
+    
+
     },
 
 
