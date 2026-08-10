@@ -4,6 +4,7 @@ import shutil
 import ctypes
 import ctypes.util
 from collections import deque
+
 import discord
 import discord.opus
 from discord.ext import commands
@@ -11,34 +12,46 @@ import yt_dlp
 
 
 
+
 def load_opus():
     if discord.opus.is_loaded():
-        print("[MUSIC] ✅ Opus codec already loaded.")
+        print("[MUSIC] ✅ Opus already loaded.")
         return True
 
-    candidates = [
+    possible_paths = [
+        ctypes.util.find_library("opus"),
         "libopus.so.0",
         "libopus.so",
-        "opus",
+        "/usr/lib/x86_64-linux-gnu/libopus.so.0",
+        "/usr/lib/aarch64-linux-gnu/libopus.so.0",
     ]
 
-    for name in candidates:
-        try:
-            path = ctypes.util.find_library(name)
+    for path in possible_paths:
+        if not path:
+            continue
 
-            if path:
-                discord.opus.load_opus(path)
+        try:
+            ctypes.CDLL(path)
+            discord.opus.load_opus(path)
+
+            if discord.opus.is_loaded():
                 print(f"[MUSIC] ✅ Opus loaded: {path}")
                 return True
 
         except Exception as e:
-            print(f"[MUSIC] Opus load attempt failed: {e}")
+            print(f"[MUSIC] ❌ Failed to load Opus {path}: {e}")
 
     print("[MUSIC] ❌ Opus codec NOT loaded.")
     return False
 
 
-load_opus()
+OPUS_LOADED = load_opus()
+
+if not OPUS_LOADED:
+    print(
+        "[MUSIC] ⚠️ Discord voice audio cannot play "
+        "until Opus is available."
+    )
 
 # =========================================================
 # YOUTUBE COOKIES
