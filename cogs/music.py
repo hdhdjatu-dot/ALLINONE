@@ -19,7 +19,8 @@ HSL_GIF = (
     "iBILBPeCHDVuELjOND/giphy.gif"
 )
 
-
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+COOKIE_PATH = os.path.join(BASE_DIR, 'cookies.txt')
 # =========================================================
 # FFMPEG
 # =========================================================
@@ -59,7 +60,7 @@ YTDLP_OPTIONS = {
     'format': 'bestaudio/best/m4a/mp4/worst',
     'extractaudio': True,
     'audioformat': 'mp3',
-    'cookiefile': 'cookies.txt',
+    'cookiefile': COOKIE_PATH,  # <--- Yahan COOKIE_PATH pass karein
     'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
     'restrictfilenames': True,
     'noplaylist': True,
@@ -76,6 +77,7 @@ YTDLP_OPTIONS = {
         }
     },
 }
+
 
 
     
