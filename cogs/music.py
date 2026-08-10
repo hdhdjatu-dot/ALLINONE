@@ -59,6 +59,7 @@ YTDLP_OPTIONS = {
     'format': 'bestaudio/best',
     'extractaudio': True,
     'audioformat': 'mp3',
+    'cookiefile': 'cookies.txt',  # <--- Yeh line add karein
     'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
     'restrictfilenames': True,
     'noplaylist': True,
@@ -75,18 +76,13 @@ YTDLP_OPTIONS = {
         }
     
 
+    
+
     },
-
-
-    "extractor_args": {
-        "youtube": {
-            "player_client": [
-                "android",
-                "web"
-            ]
-        }
-    }
 }
+
+
+    
 
 
 # =========================================================
