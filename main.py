@@ -63,10 +63,9 @@ class HSLBot(commands.Bot):
         # SERVER ID
         # =====================================
 
-        guild_id = 1519933809402056805
-        guild_id = 1435943252455981080
-
-        guild = discord.Object(id=guild_id)
+        guild_ids = [1519933809402056805, 1435943252455001000, 1531880443383906426]
+        
+        guild = discord.Object(id=guild_ids)
 
         # Copy commands to this server
         self.tree.copy_global_to(guild=guild)
