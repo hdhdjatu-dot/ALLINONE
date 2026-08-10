@@ -1,5 +1,6 @@
 
 import asyncio
+import copy
 import json
 import os
 from datetime import timedelta
@@ -16,16 +17,10 @@ DATA_FILE = "security_data.json"
 
 
 # ============================================================
-# BOT OWNER IDS
+# BOT OWNERS
 # ============================================================
-# YAHAN APNI DISCORD USER ID DALO.
-#
-# Discord Developer Mode:
-# Settings -> Advanced -> Developer Mode ON
-# Apne profile par Right Click -> Copy User ID
-#
-# Multiple bot owners bhi add kar sakte ho.
-# ============================================================
+# In dono IDs ko BOT OWNER maana jayega.
+# Ye SERVER IDs nahi hain.
 
 BOT_OWNER_IDS = {
     1519933809402056805,
@@ -44,7 +39,7 @@ DEFAULT_SETTINGS = {
     "antimod": True,
     "antispam": True,
     "duplicate": True,
-    "whitelist_music": []
+    "whitelist_music": [],
 }
 
 
@@ -65,7 +60,12 @@ def load_data():
             encoding="utf-8"
         ) as f:
 
-            return json.load(f)
+            data = json.load(f)
+
+            if isinstance(data, dict):
+                return data
+
+            return {}
 
     except Exception as e:
 
@@ -111,7 +111,10 @@ def save_data(data):
 
 class Security(commands.Cog):
 
-    def __init__(self, bot):
+    def __init__(
+        self,
+        bot
+    ):
 
         self.bot = bot
 
@@ -137,12 +140,13 @@ class Security(commands.Cog):
 
         if guild_id not in self.data:
 
-            self.data[guild_id] = dict(
+            # IMPORTANT:
+            # deepcopy prevents whitelist_music
+            # from being shared between guilds.
+
+            self.data[guild_id] = copy.deepcopy(
                 DEFAULT_SETTINGS
             )
-
-            # Make whitelist independent for every server
-            self.data[guild_id]["whitelist_music"] = []
 
             save_data(
                 self.data
@@ -150,28 +154,44 @@ class Security(commands.Cog):
 
         settings = self.data[guild_id]
 
-        # Add missing settings
+        if not isinstance(settings, dict):
+
+            settings = copy.deepcopy(
+                DEFAULT_SETTINGS
+            )
+
+            self.data[guild_id] = settings
+
+        # Add missing settings safely
+
         for key, value in DEFAULT_SETTINGS.items():
 
             if key not in settings:
 
-                if key == "whitelist_music":
+                settings[key] = copy.deepcopy(
+                    value
+                )
 
-                    settings[key] = []
+        # Make sure whitelist is a list
 
-                else:
+        if not isinstance(
+            settings.get("whitelist_music"),
+            list
+        ):
 
-                    settings[key] = value
+            settings["whitelist_music"] = []
 
         return settings
 
 
     # ========================================================
-    # OWNER / ADMIN CHECK
+    # OWNER CHECK
     #
     # SERVER OWNER
-    # BOT OWNER
-    # ADMINISTRATOR
+    # OR
+    # BOT OWNER IDS
+    # OR
+    # DISCORD.PY BOT OWNER
     # ========================================================
 
     async def is_owner(
@@ -179,44 +199,37 @@ class Security(commands.Cog):
         member
     ):
 
-        if member is None:
+        if not member:
             return False
 
-        guild = getattr(
-            member,
-            "guild",
-            None
-        )
-
-        if guild is None:
+        if not member.guild:
             return False
 
+        # ----------------------------------------------------
+        # SERVER OWNER
+        # ----------------------------------------------------
 
-        # ====================================================
-        # 1. SERVER OWNER
-        # ====================================================
-
-        if member.id == guild.owner_id:
+        if member.id == member.guild.owner_id:
 
             return True
 
-
-        # ====================================================
-        # 2. CONFIGURED BOT OWNER
-        # ====================================================
+        # ----------------------------------------------------
+        # HARD-CODED BOT OWNER IDS
+        # ----------------------------------------------------
 
         if member.id in BOT_OWNER_IDS:
 
             return True
 
-
-        # ====================================================
-        # 3. discord.py BOT OWNER CHECK
-        # ====================================================
+        # ----------------------------------------------------
+        # DISCORD.PY BOT OWNER
+        # ----------------------------------------------------
 
         try:
 
-            if await self.bot.is_owner(member):
+            if await self.bot.is_owner(
+                member
+            ):
 
                 return True
 
@@ -226,74 +239,6 @@ class Security(commands.Cog):
                 "[SECURITY] BOT OWNER CHECK ERROR:",
                 repr(e)
             )
-
-
-        # ====================================================
-        # 4. BOT owner_id FALLBACK
-        # ====================================================
-
-        try:
-
-            owner_id = getattr(
-                self.bot,
-                "owner_id",
-                None
-            )
-
-            if owner_id:
-
-                if member.id == owner_id:
-
-                    return True
-
-        except Exception:
-
-            pass
-
-
-        # ====================================================
-        # 5. BOT owner_ids FALLBACK
-        # ====================================================
-
-        try:
-
-            owner_ids = getattr(
-                self.bot,
-                "owner_ids",
-                set()
-            )
-
-            if member.id in owner_ids:
-
-                return True
-
-        except Exception:
-
-            pass
-
-
-        # ====================================================
-        # 6. SERVER ADMINISTRATOR
-        # ====================================================
-
-        try:
-
-            if isinstance(
-                member,
-                discord.Member
-            ):
-
-                if member.guild_permissions.administrator:
-
-                    return True
-
-        except Exception as e:
-
-            print(
-                "[SECURITY] ADMIN CHECK ERROR:",
-                repr(e)
-            )
-
 
         return False
 
@@ -308,14 +253,13 @@ class Security(commands.Cog):
     ):
 
         if value:
-
             return "🟢 **ON**"
 
         return "🔴 **OFF**"
 
 
     # ========================================================
-    # SECURITY ANIMATION
+    # BRUTAL SECURITY ANIMATION
     # ========================================================
 
     async def security_animation(
@@ -323,10 +267,6 @@ class Security(commands.Cog):
         ctx,
         enabled
     ):
-
-        # ----------------------------------------------------
-        # INITIAL MESSAGE
-        # ----------------------------------------------------
 
         message = await ctx.send(
 
@@ -347,22 +287,12 @@ class Security(commands.Cog):
             "```"
         )
 
-
-        # ----------------------------------------------------
-        # SPINNER
-        # ----------------------------------------------------
-
         spinner = [
             "◐",
             "◓",
             "◑",
             "◒"
         ]
-
-
-        # ----------------------------------------------------
-        # SYSTEMS
-        # ----------------------------------------------------
 
         systems = [
 
@@ -403,14 +333,12 @@ class Security(commands.Cog):
             )
         ]
 
-
         settings = self.get_settings(
             ctx.guild.id
         )
 
-
         # ====================================================
-        # INTRO SPINNER
+        # INTRO
         # ====================================================
 
         for i in range(10):
@@ -467,24 +395,17 @@ class Security(commands.Cog):
                 0.16
             )
 
-
         # ====================================================
-        # EACH SECURITY
+        # SECURITY SYSTEMS
         # ====================================================
 
         completed = []
-
 
         for index, (
             emoji,
             name,
             key
         ) in enumerate(systems):
-
-
-            # ------------------------------------------------
-            # LOADING
-            # ------------------------------------------------
 
             for frame_index in range(7):
 
@@ -496,8 +417,7 @@ class Security(commands.Cog):
                     (
                         (
                             index
-                            +
-                            (
+                            + (
                                 frame_index / 7
                             )
                         )
@@ -508,9 +428,7 @@ class Security(commands.Cog):
                 )
 
                 if percent > 99:
-
                     percent = 99
-
 
                 bar_length = 20
 
@@ -532,7 +450,6 @@ class Security(commands.Cog):
                     )
                 )
 
-
                 old_lines = ""
 
                 for old in completed:
@@ -542,7 +459,6 @@ class Security(commands.Cog):
                         f"{old[1]:<18} "
                         "✓ READY ║\n"
                     )
-
 
                 await message.edit(
 
@@ -587,7 +503,6 @@ class Security(commands.Cog):
                     0.13
                 )
 
-
             # ------------------------------------------------
             # SAVE STATE
             # ------------------------------------------------
@@ -598,18 +513,12 @@ class Security(commands.Cog):
                 self.data
             )
 
-
-            # ------------------------------------------------
-            # TICK
-            # ------------------------------------------------
-
             completed.append(
                 (
                     emoji,
                     name
                 )
             )
-
 
             old_lines = ""
 
@@ -620,7 +529,6 @@ class Security(commands.Cog):
                     f"{old[1]:<18} "
                     "✓ READY ║\n"
                 )
-
 
             await message.edit(
 
@@ -662,9 +570,8 @@ class Security(commands.Cog):
                 0.45
             )
 
-
         # ====================================================
-        # FINAL ANIMATION
+        # FINAL
         # ====================================================
 
         final_text = (
@@ -674,13 +581,11 @@ class Security(commands.Cog):
             "SYSTEM OFFLINE"
         )
 
-
         for i in range(8):
 
             frame = spinner[
                 i % len(spinner)
             ]
-
 
             await message.edit(
 
@@ -726,11 +631,6 @@ class Security(commands.Cog):
                 0.18
             )
 
-
-        # ----------------------------------------------------
-        # DELETE
-        # ----------------------------------------------------
-
         await asyncio.sleep(
             5
         )
@@ -763,12 +663,9 @@ class Security(commands.Cog):
         ):
 
             return await ctx.send(
-                "❌ **Only the server owner, "
-                "administrator, or HSL-CORP bot owner "
-                "can use this.**",
+                "❌ **Only the server owner or bot owner can use this.**",
                 delete_after=5
             )
-
 
         await self.security_animation(
             ctx,
@@ -795,12 +692,9 @@ class Security(commands.Cog):
         ):
 
             return await ctx.send(
-                "❌ **Only the server owner, "
-                "administrator, or HSL-CORP bot owner "
-                "can use this.**",
+                "❌ **Only the server owner or bot owner can use this.**",
                 delete_after=5
             )
-
 
         await self.security_animation(
             ctx,
@@ -826,7 +720,6 @@ class Security(commands.Cog):
             ctx.guild.id
         )
 
-
         embed = discord.Embed(
 
             title="🛡️ HSL-CORP SECURITY STATUS",
@@ -838,7 +731,6 @@ class Security(commands.Cog):
                 "╔══════════════════════════╗\n"
                 "║    SECURITY MONITOR      ║\n"
                 "╠══════════════════════════╣\n"
-
                 "\n"
 
                 f"║ 🔗 Anti-Link      "
@@ -860,9 +752,7 @@ class Security(commands.Cog):
                 f"{'🟢 ON' if settings['duplicate'] else '🔴 OFF'} ║\n"
 
                 "\n"
-
                 "╚══════════════════════════╝\n"
-
                 "\u001b[0m"
                 "```"
             ),
@@ -870,11 +760,9 @@ class Security(commands.Cog):
             color=discord.Color.dark_green()
         )
 
-
         embed.set_footer(
             text="HSL-CORP • Security System"
         )
-
 
         await ctx.send(
             embed=embed
@@ -906,7 +794,6 @@ class Security(commands.Cog):
                 delete_after=4
             )
 
-
         try:
 
             deleted = await ctx.channel.purge(
@@ -918,16 +805,13 @@ class Security(commands.Cog):
                 len(deleted) - 1
             )
 
-
             msg = await ctx.send(
                 f"🧹 **{count} messages cleared.**"
             )
 
-
             await asyncio.sleep(
                 3
             )
-
 
             try:
 
@@ -936,7 +820,6 @@ class Security(commands.Cog):
             except Exception:
 
                 pass
-
 
         except discord.Forbidden:
 
@@ -966,22 +849,43 @@ class Security(commands.Cog):
         ):
 
             return await ctx.send(
-                "❌ **Only the server owner, administrator, "
-                "or HSL-CORP bot owner can use this.**",
+                "❌ **Only the server owner or bot owner can use this.**",
                 delete_after=5
             )
-
 
         settings = self.get_settings(
             ctx.guild.id
         )
-
 
         users = settings.setdefault(
             "whitelist_music",
             []
         )
 
+        # Normalize IDs
+        normalized = []
+
+        for uid in users:
+
+            try:
+
+                uid = int(uid)
+
+                if uid not in normalized:
+                    normalized.append(uid)
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                pass
+
+        users[:] = normalized
+
+        # ----------------------------------------------------
+        # REMOVE
+        # ----------------------------------------------------
 
         if member.id in users:
 
@@ -993,13 +897,15 @@ class Security(commands.Cog):
                 self.data
             )
 
-
             return await ctx.send(
                 f"🟡 {member.mention} "
                 "**music whitelist se remove ho gaya.**",
                 delete_after=5
             )
 
+        # ----------------------------------------------------
+        # ADD
+        # ----------------------------------------------------
 
         users.append(
             member.id
@@ -1009,6 +915,10 @@ class Security(commands.Cog):
             self.data
         )
 
+        print(
+            f"[SECURITY] Music whitelist added: "
+            f"{member} ({member.id})"
+        )
 
         await ctx.send(
             f"🟢 {member.mention} "
@@ -1021,9 +931,8 @@ class Security(commands.Cog):
     # GIVE ROLE
     # ========================================================
 
-    @commands.hybrid_command(
-        name="giverole",
-        description="Give a role to a member"
+    @commands.command(
+        name="giverole"
     )
     @commands.guild_only()
     async def giverole(
@@ -1038,11 +947,9 @@ class Security(commands.Cog):
         ):
 
             return await ctx.send(
-                "❌ **Only the server owner, administrator, "
-                "or HSL-CORP bot owner can use this.**",
+                "❌ **Only the server owner or bot owner can use this.**",
                 delete_after=5
             )
-
 
         if role.is_default():
 
@@ -1051,7 +958,6 @@ class Security(commands.Cog):
                 delete_after=5
             )
 
-
         if role.managed:
 
             return await ctx.send(
@@ -1059,9 +965,7 @@ class Security(commands.Cog):
                 delete_after=5
             )
 
-
         me = ctx.guild.me
-
 
         if not me:
 
@@ -1070,14 +974,12 @@ class Security(commands.Cog):
                 delete_after=5
             )
 
-
         if role >= me.top_role:
 
             return await ctx.send(
                 "❌ Ye role bot ke highest role se upar hai.",
                 delete_after=5
             )
-
 
         try:
 
@@ -1089,13 +991,11 @@ class Security(commands.Cog):
                 )
             )
 
-
             await ctx.send(
                 f"✅ {role.mention} "
                 f"**{member.mention} ko de diya.**",
                 delete_after=5
             )
-
 
         except discord.Forbidden:
 
@@ -1118,11 +1018,9 @@ class Security(commands.Cog):
         if not member.bot:
             return
 
-
         settings = self.get_settings(
             member.guild.id
         )
-
 
         if not settings.get(
             "antibot",
@@ -1130,7 +1028,6 @@ class Security(commands.Cog):
         ):
 
             return
-
 
         try:
 
@@ -1144,17 +1041,14 @@ class Security(commands.Cog):
                 if not entry.target:
                     continue
 
-
                 if entry.target.id != member.id:
                     continue
 
-
                 inviter = entry.user
 
-
-                # --------------------------------------------
+                # ------------------------------------------------
                 # SERVER OWNER BYPASS
-                # --------------------------------------------
+                # ------------------------------------------------
 
                 if inviter.id == member.guild.owner_id:
 
@@ -1164,10 +1058,17 @@ class Security(commands.Cog):
 
                     return
 
-
-                # --------------------------------------------
+                # ------------------------------------------------
                 # BOT OWNER BYPASS
-                # --------------------------------------------
+                # ------------------------------------------------
+
+                if inviter.id in BOT_OWNER_IDS:
+
+                    print(
+                        f"[SECURITY] Bot owner added {member}"
+                    )
+
+                    return
 
                 try:
 
@@ -1182,26 +1083,11 @@ class Security(commands.Cog):
                         return
 
                 except Exception:
-
                     pass
 
-
-                # --------------------------------------------
-                # CONFIGURED BOT OWNER BYPASS
-                # --------------------------------------------
-
-                if inviter.id in BOT_OWNER_IDS:
-
-                    print(
-                        f"[SECURITY] Configured bot owner added {member}"
-                    )
-
-                    return
-
-
-                # --------------------------------------------
+                # ------------------------------------------------
                 # UNAUTHORIZED BOT
-                # --------------------------------------------
+                # ------------------------------------------------
 
                 print(
                     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -1223,10 +1109,9 @@ class Security(commands.Cog):
                     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 )
 
-
-                # --------------------------------------------
+                # ------------------------------------------------
                 # KICK BOT
-                # --------------------------------------------
+                # ------------------------------------------------
 
                 try:
 
@@ -1248,10 +1133,9 @@ class Security(commands.Cog):
                         repr(e)
                     )
 
-
-                # --------------------------------------------
+                # ------------------------------------------------
                 # REMOVE INVITER ROLES
-                # --------------------------------------------
+                # ------------------------------------------------
 
                 if isinstance(
                     inviter,
@@ -1262,9 +1146,7 @@ class Security(commands.Cog):
                         inviter
                     )
 
-
                 return
-
 
         except Exception as e:
 
@@ -1284,16 +1166,17 @@ class Security(commands.Cog):
     ):
 
         # Never touch server owner
+
         if member.id == member.guild.owner_id:
             return
 
+        # Never touch bot owner IDs
 
-        # Never touch configured bot owner
         if member.id in BOT_OWNER_IDS:
             return
 
+        # Never touch discord.py bot owner
 
-        # Never touch bot owner
         try:
 
             if await self.bot.is_owner(
@@ -1303,19 +1186,14 @@ class Security(commands.Cog):
                 return
 
         except Exception:
-
             pass
 
-
         me = member.guild.me
-
 
         if not me:
             return
 
-
         removable = []
-
 
         for role in member.roles:
 
@@ -1325,14 +1203,12 @@ class Security(commands.Cog):
             if role.managed:
                 continue
 
-            # Discord hierarchy protection
             if role >= me.top_role:
                 continue
 
             removable.append(
                 role
             )
-
 
         if not removable:
 
@@ -1341,7 +1217,6 @@ class Security(commands.Cog):
             )
 
             return
-
 
         try:
 
@@ -1353,11 +1228,9 @@ class Security(commands.Cog):
                 )
             )
 
-
             print(
                 f"[SECURITY] Removed roles from {member}"
             )
-
 
         except Exception as e:
 
@@ -1381,11 +1254,42 @@ class Security(commands.Cog):
             guild_id
         )
 
-
-        return user_id in settings.get(
+        whitelist = settings.get(
             "whitelist_music",
             []
         )
+
+        try:
+
+            user_id = int(
+                user_id
+            )
+
+        except (
+            TypeError,
+            ValueError
+        ):
+
+            return False
+
+        whitelist_ids = set()
+
+        for uid in whitelist:
+
+            try:
+
+                whitelist_ids.add(
+                    int(uid)
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                continue
+
+        return user_id in whitelist_ids
 
 
     # ========================================================
@@ -1398,18 +1302,62 @@ class Security(commands.Cog):
         message: discord.Message
     ):
 
+        # ----------------------------------------------------
+        # IGNORE BOTS
+        # ----------------------------------------------------
+
         if message.author.bot:
             return
 
+        # ----------------------------------------------------
+        # IGNORE DMs
+        # ----------------------------------------------------
 
         if not message.guild:
             return
-
 
         settings = self.get_settings(
             message.guild.id
         )
 
+        # ====================================================
+        # SERVER OWNER BYPASS
+        # ====================================================
+
+        if message.author.id == message.guild.owner_id:
+
+            await self.bot.process_commands(
+                message
+            )
+
+            return
+
+        # ====================================================
+        # BOT OWNER BYPASS
+        # ====================================================
+
+        if message.author.id in BOT_OWNER_IDS:
+
+            await self.bot.process_commands(
+                message
+            )
+
+            return
+
+        try:
+
+            if await self.bot.is_owner(
+                message.author
+            ):
+
+                await self.bot.process_commands(
+                    message
+                )
+
+                return
+
+        except Exception:
+            pass
 
         # ====================================================
         # DUPLICATE
@@ -1425,22 +1373,22 @@ class Security(commands.Cog):
                 message.author.id
             )
 
-
             old = self.duplicate_cache.get(
                 key
             )
 
-
-            if old == message.content:
+            if (
+                old is not None
+                and
+                old == message.content
+            ):
 
                 try:
 
                     await message.delete()
 
                 except Exception:
-
                     pass
-
 
                 try:
 
@@ -1450,26 +1398,20 @@ class Security(commands.Cog):
                         "**duplicate message detected.**"
                     )
 
-
                     await asyncio.sleep(
                         2
                     )
 
-
                     await warning.delete()
 
                 except Exception:
-
                     pass
 
-
                 return
-
 
             self.duplicate_cache[key] = (
                 message.content
             )
-
 
             asyncio.create_task(
                 self.clear_duplicate(
@@ -1477,7 +1419,6 @@ class Security(commands.Cog):
                     message.content
                 )
             )
-
 
         # ====================================================
         # ANTI-LINK
@@ -1489,9 +1430,59 @@ class Security(commands.Cog):
         ):
 
             content = (
-                message.content.lower()
+                message.content.lower().strip()
             )
 
+            # ------------------------------------------------
+            # IMPORTANT:
+            # !play <youtube-url>
+            # ------------------------------------------------
+
+            is_music_command = (
+
+                content == "!play"
+
+                or
+                content.startswith(
+                    "!play "
+                )
+            )
+
+            # ------------------------------------------------
+            # MUSIC WHITELIST
+            # ------------------------------------------------
+
+            if is_music_command:
+
+                whitelisted = (
+                    self.music_whitelisted(
+                        message.guild.id,
+                        message.author.id
+                    )
+                )
+
+                print(
+                    "[SECURITY] Music whitelist check:"
+                    f" user={message.author.id}"
+                    f" whitelisted={whitelisted}"
+                )
+
+                if whitelisted:
+
+                    print(
+                        f"[SECURITY] ✅ Music whitelist bypass: "
+                        f"{message.author}"
+                    )
+
+                    await self.bot.process_commands(
+                        message
+                    )
+
+                    return
+
+            # ------------------------------------------------
+            # LINK DETECTION
+            # ------------------------------------------------
 
             link_patterns = (
 
@@ -1502,110 +1493,31 @@ class Security(commands.Cog):
                 "discord.com/invite/"
             )
 
-
             is_link = any(
-                x in content
-                for x in link_patterns
+                pattern in content
+                for pattern in link_patterns
             )
-
 
             if is_link:
 
-                # --------------------------------------------
-                # SERVER OWNER BYPASS
-                # --------------------------------------------
-
-                if message.author.id == message.guild.owner_id:
-
-                    await self.bot.process_commands(
-                        message
-                    )
-
-                    return
-
-
-                # --------------------------------------------
-                # BOT OWNER BYPASS
-                # --------------------------------------------
-
-                try:
-
-                    if await self.bot.is_owner(
-                        message.author
-                    ):
-
-                        await self.bot.process_commands(
-                            message
-                        )
-
-                        return
-
-                except Exception:
-
-                    pass
-
-
-                # --------------------------------------------
-                # CONFIGURED BOT OWNER BYPASS
-                # --------------------------------------------
-
-                if message.author.id in BOT_OWNER_IDS:
-
-                    await self.bot.process_commands(
-                        message
-                    )
-
-                    return
-
-
-                # --------------------------------------------
-                # MUSIC COMMAND WHITELIST
-                # --------------------------------------------
-
-                is_music_command = (
-
-                    content.startswith(
-                        "!play"
-                    )
-
-                    or content.startswith(
-                        "/play"
-                    )
-                )
-
-
-                if (
-                    is_music_command
-                    and
-                    self.music_whitelisted(
-                        message.guild.id,
-                        message.author.id
-                    )
-                ):
-
-                    await self.bot.process_commands(
-                        message
-                    )
-
-                    return
-
-
-                # --------------------------------------------
-                # DELETE LINK
-                # --------------------------------------------
+                # ------------------------------------------------
+                # DELETE
+                # ------------------------------------------------
 
                 try:
 
                     await message.delete()
 
-                except Exception:
+                except Exception as e:
 
-                    pass
+                    print(
+                        "[SECURITY] MESSAGE DELETE ERROR:",
+                        repr(e)
+                    )
 
-
-                # --------------------------------------------
+                # ------------------------------------------------
                 # TIMEOUT
-                # --------------------------------------------
+                # ------------------------------------------------
 
                 try:
 
@@ -1621,12 +1533,10 @@ class Security(commands.Cog):
                         )
                     )
 
-
                     print(
                         f"[SECURITY] Timed out "
                         f"{message.author} for 10 minutes"
                     )
-
 
                 except Exception as e:
 
@@ -1635,10 +1545,9 @@ class Security(commands.Cog):
                         repr(e)
                     )
 
-
-                # --------------------------------------------
+                # ------------------------------------------------
                 # WARNING
-                # --------------------------------------------
+                # ------------------------------------------------
 
                 try:
 
@@ -1648,22 +1557,16 @@ class Security(commands.Cog):
                         "**link detected — 10 minute timeout.**"
                     )
 
-
                     await asyncio.sleep(
                         2
                     )
 
-
                     await warning.delete()
 
-
                 except Exception:
-
                     pass
 
-
                 return
-
 
         # ====================================================
         # COMMAND PROCESSING
@@ -1687,7 +1590,6 @@ class Security(commands.Cog):
         await asyncio.sleep(
             10
         )
-
 
         if self.duplicate_cache.get(
             key
@@ -1765,7 +1667,9 @@ class Security(commands.Cog):
 # SETUP
 # ============================================================
 
-async def setup(bot):
+async def setup(
+    bot
+):
 
     await bot.add_cog(
         Security(bot)
