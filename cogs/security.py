@@ -14,11 +14,10 @@ from discord.ext import commands
 
 DATA_FILE = "security_data.json"
 
+
 # ============================================================
 # BOT OWNERS
 # ============================================================
-# These IDs ALWAYS have security-owner access.
-# Server owner also has access automatically.
 
 BOT_OWNER_IDS = {
     1519933809402056805,
@@ -26,6 +25,10 @@ BOT_OWNER_IDS = {
     1517901703263944758,
 }
 
+
+# ============================================================
+# DEFAULT SETTINGS
+# ============================================================
 
 DEFAULT_SETTINGS = {
     "antinuke": True,
@@ -124,15 +127,11 @@ class Security(commands.Cog):
 
         if guild_id not in self.data:
 
-            self.data[guild_id] = {
-                "antinuke": True,
-                "antibot": True,
-                "antilink": True,
-                "antimod": True,
-                "antispam": True,
-                "duplicate": True,
-                "whitelist_music": []
-            }
+            self.data[guild_id] = dict(
+                DEFAULT_SETTINGS
+            )
+
+            self.data[guild_id]["whitelist_music"] = []
 
             save_data(self.data)
 
@@ -143,8 +142,11 @@ class Security(commands.Cog):
             if key not in settings:
 
                 if isinstance(value, list):
+
                     settings[key] = list(value)
+
                 else:
+
                     settings[key] = value
 
         return settings
@@ -152,7 +154,7 @@ class Security(commands.Cog):
 
     # ========================================================
     # OWNER CHECK
-    # SERVER OWNER OR BOT OWNER
+    # SERVER OWNER / BOT OWNER
     # ========================================================
 
     async def is_owner(self, member):
@@ -163,26 +165,17 @@ class Security(commands.Cog):
         if not member.guild:
             return False
 
-        # ----------------------------------------------------
-        # SERVER OWNER
-        # ----------------------------------------------------
-
+        # Server owner
         if member.id == member.guild.owner_id:
 
             return True
 
-        # ----------------------------------------------------
-        # MANUAL BOT OWNER IDS
-        # ----------------------------------------------------
-
+        # Manual bot owners
         if member.id in BOT_OWNER_IDS:
 
             return True
 
-        # ----------------------------------------------------
-        # DISCORD.PY BOT OWNER
-        # ----------------------------------------------------
-
+        # discord.py owner
         try:
 
             if await self.bot.is_owner(member):
@@ -200,6 +193,32 @@ class Security(commands.Cog):
 
 
     # ========================================================
+    # OWNER/BOT OWNER BYPASS
+    # ========================================================
+
+    async def is_protected_member(self, member):
+
+        if not member:
+            return False
+
+        if member.id == member.guild.owner_id:
+            return True
+
+        if member.id in BOT_OWNER_IDS:
+            return True
+
+        try:
+
+            if await self.bot.is_owner(member):
+                return True
+
+        except Exception:
+            pass
+
+        return False
+
+
+    # ========================================================
     # STATUS
     # ========================================================
 
@@ -212,7 +231,7 @@ class Security(commands.Cog):
 
 
     # ========================================================
-    # BRUTAL SECURITY ANIMATION
+    # SECURITY ANIMATION
     # ========================================================
 
     async def security_animation(self, ctx, enabled):
@@ -245,50 +264,22 @@ class Security(commands.Cog):
 
         systems = [
 
-            (
-                "🔗",
-                "ANTI-LINK",
-                "antilink"
-            ),
+            ("🔗", "ANTI-LINK", "antilink"),
+            ("🤖", "ANTI-BOT", "antibot"),
+            ("☢️", "ANTI-NUKE", "antinuke"),
+            ("🔨", "ANTI-MOD", "antimod"),
+            ("💬", "ANTI-SPAM", "antispam"),
+            ("♻️", "DUPLICATE GUARD", "duplicate")
 
-            (
-                "🤖",
-                "ANTI-BOT",
-                "antibot"
-            ),
-
-            (
-                "☢️",
-                "ANTI-NUKE",
-                "antinuke"
-            ),
-
-            (
-                "🔨",
-                "ANTI-MOD",
-                "antimod"
-            ),
-
-            (
-                "💬",
-                "ANTI-SPAM",
-                "antispam"
-            ),
-
-            (
-                "♻️",
-                "DUPLICATE GUARD",
-                "duplicate"
-            )
         ]
 
         settings = self.get_settings(
             ctx.guild.id
         )
 
-        # ====================================================
+        # ----------------------------------------------------
         # INTRO
-        # ====================================================
+        # ----------------------------------------------------
 
         for i in range(10):
 
@@ -342,9 +333,9 @@ class Security(commands.Cog):
 
             await asyncio.sleep(0.16)
 
-        # ====================================================
+        # ----------------------------------------------------
         # EACH SECURITY
-        # ====================================================
+        # ----------------------------------------------------
 
         completed = []
 
@@ -375,16 +366,16 @@ class Security(commands.Cog):
                     * 100
                 )
 
-                if percent > 99:
-                    percent = 99
+                percent = min(
+                    percent,
+                    99
+                )
 
                 bar_length = 20
 
                 filled = int(
                     (
-                        percent
-                        /
-                        100
+                        percent / 100
                     )
                     * bar_length
                 )
@@ -449,13 +440,11 @@ class Security(commands.Cog):
 
                 await asyncio.sleep(0.13)
 
-            # ------------------------------------------------
-            # SAVE STATE
-            # ------------------------------------------------
-
             settings[key] = enabled
 
-            save_data(self.data)
+            save_data(
+                self.data
+            )
 
             completed.append(
                 (
@@ -512,10 +501,6 @@ class Security(commands.Cog):
             )
 
             await asyncio.sleep(0.45)
-
-        # ====================================================
-        # FINAL
-        # ====================================================
 
         final_text = (
             "SYSTEM ONLINE"
@@ -584,7 +569,7 @@ class Security(commands.Cog):
 
 
     # ========================================================
-    # ANTINUKE ENABLE
+    # ENABLE
     # ========================================================
 
     @commands.hybrid_command(
@@ -608,7 +593,7 @@ class Security(commands.Cog):
 
 
     # ========================================================
-    # ANTINUKE DISABLE
+    # DISABLE
     # ========================================================
 
     @commands.hybrid_command(
@@ -654,6 +639,7 @@ class Security(commands.Cog):
 
                 "```ansi\n"
                 "\u001b[1;32m"
+
                 "╔══════════════════════════╗\n"
                 "║    SECURITY MONITOR      ║\n"
                 "╠══════════════════════════╣\n"
@@ -897,123 +883,215 @@ class Security(commands.Cog):
         member: discord.Member
     ):
 
+        # Only bots
         if not member.bot:
             return
 
+        guild = member.guild
+
         settings = self.get_settings(
-            member.guild.id
+            guild.id
         )
 
+        # Anti-Bot disabled
         if not settings.get(
             "antibot",
             True
         ):
             return
 
-        try:
+        print(
+            f"[SECURITY] 🚨 Bot joined: {member} "
+            f"({member.id})"
+        )
 
-            async for entry in member.guild.audit_logs(
-                limit=10,
-                action=discord.AuditLogAction.bot_add
-            ):
+        inviter = None
 
-                if not entry.target:
-                    continue
+        # ----------------------------------------------------
+        # WAIT FOR AUDIT LOG
+        #
+        # Discord audit log can appear slightly after
+        # on_member_join.
+        # ----------------------------------------------------
 
-                if entry.target.id != member.id:
-                    continue
+        for attempt in range(5):
 
-                inviter = entry.user
+            try:
 
-                # SERVER OWNER BYPASS
-                if inviter.id == member.guild.owner_id:
-
-                    print(
-                        f"[SECURITY] Server owner added {member}"
-                    )
-
-                    return
-
-                # BOT OWNER BYPASS
-                if inviter.id in BOT_OWNER_IDS:
-
-                    print(
-                        f"[SECURITY] Bot owner added {member}"
-                    )
-
-                    return
-
-                try:
-
-                    if await self.bot.is_owner(
-                        inviter
-                    ):
-
-                        print(
-                            f"[SECURITY] Bot owner added {member}"
-                        )
-
-                        return
-
-                except Exception:
-                    pass
-
-                print(
-                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                await asyncio.sleep(
+                    0.8
                 )
 
-                print(
-                    "🚨 [SECURITY] UNAUTHORIZED BOT"
-                )
-
-                print(
-                    f"[SECURITY] Bot: {member}"
-                )
-
-                print(
-                    f"[SECURITY] Added by: {inviter}"
-                )
-
-                print(
-                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                )
-
-                try:
-
-                    await member.kick(
-                        reason=(
-                            "HSL Security - "
-                            "Unauthorized bot addition"
-                        )
-                    )
-
-                    print(
-                        "[SECURITY] ✅ Unauthorized bot kicked"
-                    )
-
-                except Exception as e:
-
-                    print(
-                        "[SECURITY] BOT KICK ERROR:",
-                        repr(e)
-                    )
-
-                if isinstance(
-                    inviter,
-                    discord.Member
+                async for entry in guild.audit_logs(
+                    limit=15,
+                    action=discord.AuditLogAction.bot_add
                 ):
 
-                    await self.remove_roles(
-                        inviter
-                    )
+                    if not entry.target:
+                        continue
 
-                return
+                    if entry.target.id != member.id:
+                        continue
+
+                    # Ignore very old audit entries
+                    if entry.created_at < member.joined_at:
+                        continue
+
+                    inviter = entry.user
+
+                    break
+
+                if inviter:
+                    break
+
+            except discord.Forbidden:
+
+                print(
+                    "[SECURITY] ❌ Cannot read audit logs."
+                )
+
+                break
+
+            except Exception as e:
+
+                print(
+                    "[SECURITY] AUDIT LOG ERROR:",
+                    repr(e)
+                )
+
+        # ----------------------------------------------------
+        # INVITER NOT FOUND
+        # ----------------------------------------------------
+
+        if not inviter:
+
+            print(
+                f"[SECURITY] ⚠️ Could not determine who "
+                f"added {member}."
+            )
+
+            # Still kick unauthorized bot if possible.
+            # This prevents unknown bots staying in server.
+            try:
+
+                if await self.is_protected_member(member):
+
+                    return
+
+                await member.kick(
+                    reason=(
+                        "HSL Security - "
+                        "Unauthorized bot addition "
+                        "(inviter unknown)"
+                    )
+                )
+
+                print(
+                    "[SECURITY] ✅ Bot kicked "
+                    "(inviter unknown)"
+                )
+
+            except discord.Forbidden:
+
+                print(
+                    "[SECURITY] ❌ Cannot kick bot. "
+                    "Check bot role hierarchy."
+                )
+
+            except Exception as e:
+
+                print(
+                    "[SECURITY] UNKNOWN INVITER KICK ERROR:",
+                    repr(e)
+                )
+
+            return
+
+        # ----------------------------------------------------
+        # PROTECTED INVITER
+        # ----------------------------------------------------
+
+        if await self.is_protected_member(
+            inviter
+        ):
+
+            print(
+                f"[SECURITY] ✅ Protected user "
+                f"{inviter} added bot."
+            )
+
+            return
+
+        # ----------------------------------------------------
+        # UNAUTHORIZED BOT
+        # ----------------------------------------------------
+
+        print(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        )
+
+        print(
+            "🚨 [SECURITY] UNAUTHORIZED BOT"
+        )
+
+        print(
+            f"[SECURITY] Bot: {member}"
+        )
+
+        print(
+            f"[SECURITY] Added by: {inviter}"
+        )
+
+        print(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        )
+
+        # ----------------------------------------------------
+        # KICK BOT
+        # ----------------------------------------------------
+
+        try:
+
+            await member.kick(
+                reason=(
+                    "HSL Security - "
+                    "Unauthorized bot addition"
+                )
+            )
+
+            print(
+                "[SECURITY] ✅ Unauthorized bot kicked."
+            )
+
+        except discord.Forbidden:
+
+            print(
+                "[SECURITY] ❌ BOT KICK FAILED."
+            )
+
+            print(
+                "[SECURITY] Make sure HSL-CORP role "
+                "is ABOVE the unauthorized bot."
+            )
 
         except Exception as e:
 
             print(
-                "[SECURITY] ANTIBOT ERROR:",
+                "[SECURITY] BOT KICK ERROR:",
                 repr(e)
+            )
+
+        # ----------------------------------------------------
+        # REMOVE INVITER ROLES
+        # ----------------------------------------------------
+
+        if isinstance(
+            inviter,
+            discord.Member
+        ):
+
+            await self.remove_roles(
+                inviter
             )
 
 
@@ -1026,24 +1104,14 @@ class Security(commands.Cog):
         member
     ):
 
-        # Never touch server owner
-        if member.id == member.guild.owner_id:
+        if not member:
             return
 
-        # Never touch manual bot owners
-        if member.id in BOT_OWNER_IDS:
+        # Never touch protected users
+        if await self.is_protected_member(
+            member
+        ):
             return
-
-        # Never touch discord.py bot owners
-        try:
-
-            if await self.bot.is_owner(
-                member
-            ):
-                return
-
-        except Exception:
-            pass
 
         me = member.guild.me
 
@@ -1086,7 +1154,14 @@ class Security(commands.Cog):
             )
 
             print(
-                f"[SECURITY] Removed roles from {member}"
+                f"[SECURITY] Removed roles from "
+                f"{member}"
+            )
+
+        except discord.Forbidden:
+
+            print(
+                "[SECURITY] ❌ Cannot remove roles."
             )
 
         except Exception as e:
@@ -1158,7 +1233,9 @@ class Security(commands.Cog):
             if old == message.content:
 
                 try:
+
                     await message.delete()
+
                 except Exception:
                     pass
 
@@ -1218,7 +1295,7 @@ class Security(commands.Cog):
             if is_link:
 
                 # --------------------------------------------
-                # SERVER OWNER BYPASS
+                # SERVER OWNER
                 # --------------------------------------------
 
                 if message.author.id == message.guild.owner_id:
@@ -1230,7 +1307,7 @@ class Security(commands.Cog):
                     return
 
                 # --------------------------------------------
-                # MANUAL BOT OWNER BYPASS
+                # BOT OWNER
                 # --------------------------------------------
 
                 if message.author.id in BOT_OWNER_IDS:
@@ -1242,7 +1319,7 @@ class Security(commands.Cog):
                     return
 
                 # --------------------------------------------
-                # DISCORD.PY BOT OWNER BYPASS
+                # DISCORD.PY OWNER
                 # --------------------------------------------
 
                 try:
@@ -1269,6 +1346,10 @@ class Security(commands.Cog):
                     content.startswith("!play")
                     or
                     content.startswith("/play")
+                    or
+                    content.startswith("!p ")
+                    or
+                    content.startswith("/p ")
                 )
 
                 if (
@@ -1313,11 +1394,6 @@ class Security(commands.Cog):
                             "HSL Anti-Link - "
                             "Unauthorized link"
                         )
-                    )
-
-                    print(
-                        f"[SECURITY] Timed out "
-                        f"{message.author} for 10 minutes"
                     )
 
                 except Exception as e:
@@ -1367,7 +1443,9 @@ class Security(commands.Cog):
         content
     ):
 
-        await asyncio.sleep(10)
+        await asyncio.sleep(
+            10
+        )
 
         if self.duplicate_cache.get(
             key
@@ -1401,7 +1479,8 @@ class Security(commands.Cog):
         )
 
         print(
-            f"🤖 Manual Bot Owners: {len(BOT_OWNER_IDS)}"
+            f"🤖 Manual Bot Owners: "
+            f"{len(BOT_OWNER_IDS)}"
         )
 
         print(
