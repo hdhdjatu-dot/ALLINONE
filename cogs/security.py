@@ -17,10 +17,16 @@ DATA_FILE = "security_data.json"
 # ============================================================
 # BOT OWNERS
 # ============================================================
+#
 # IMPORTANT:
 # Yahan DISCORD USER IDs hone chahiye.
 # Server IDs nahi.
-# Server OWNER ko automatically bypass milega.
+#
+# NOTE:
+# Bot owners ko normal security bypass milta hai.
+# STRICT ANTI-BOT mein sirf SERVER OWNER bot add kar sakta hai.
+#
+# ============================================================
 
 BOT_OWNER_IDS = {
     1519933809402056805,
@@ -129,7 +135,10 @@ class Security(commands.Cog):
     # GET SETTINGS
     # ========================================================
 
-    def get_settings(self, guild_id):
+    def get_settings(
+        self,
+        guild_id
+    ):
 
         guild_id = str(guild_id)
 
@@ -151,7 +160,12 @@ class Security(commands.Cog):
 
         settings = self.data[guild_id]
 
-        # Add missing settings automatically
+        # ----------------------------------------------------
+        # ADD MISSING SETTINGS
+        # ----------------------------------------------------
+
+        changed = False
+
         for key, value in DEFAULT_SETTINGS.items():
 
             if key not in settings:
@@ -164,13 +178,51 @@ class Security(commands.Cog):
 
                     settings[key] = value
 
-        # Make sure whitelist is valid
+                changed = True
+
+        # ----------------------------------------------------
+        # MAKE SURE WHITELIST IS VALID
+        # ----------------------------------------------------
+
         if not isinstance(
             settings.get("whitelist_music"),
             list
         ):
 
             settings["whitelist_music"] = []
+
+            changed = True
+
+        # ----------------------------------------------------
+        # CLEAN INVALID WHITELIST IDs
+        # ----------------------------------------------------
+
+        cleaned = []
+
+        for user_id in settings["whitelist_music"]:
+
+            try:
+
+                cleaned.append(
+                    int(user_id)
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                changed = True
+
+        if cleaned != settings["whitelist_music"]:
+
+            settings["whitelist_music"] = cleaned
+
+            changed = True
+
+        if changed:
+
+            save_data(self.data)
 
         return settings
 
@@ -179,7 +231,10 @@ class Security(commands.Cog):
     # SERVER OWNER / BOT OWNER CHECK
     # ========================================================
 
-    async def is_owner(self, member):
+    async def is_owner(
+        self,
+        member
+    ):
 
         if not member:
             return False
@@ -187,17 +242,26 @@ class Security(commands.Cog):
         if not member.guild:
             return False
 
-        # Server owner
+        # ----------------------------------------------------
+        # SERVER OWNER
+        # ----------------------------------------------------
+
         if member.id == member.guild.owner_id:
 
             return True
 
-        # Manual bot owners
+        # ----------------------------------------------------
+        # MANUAL BOT OWNER
+        # ----------------------------------------------------
+
         if member.id in BOT_OWNER_IDS:
 
             return True
 
-        # discord.py owner check
+        # ----------------------------------------------------
+        # DISCORD.PY OWNER
+        # ----------------------------------------------------
+
         try:
 
             if await self.bot.is_owner(member):
@@ -218,7 +282,10 @@ class Security(commands.Cog):
     # PROTECTED MEMBER
     # ========================================================
 
-    async def is_protected_member(self, member):
+    async def is_protected_member(
+        self,
+        member
+    ):
 
         if not member:
             return False
@@ -226,17 +293,14 @@ class Security(commands.Cog):
         if not member.guild:
             return False
 
-        # Server owner
         if member.id == member.guild.owner_id:
 
             return True
 
-        # Manual bot owner
         if member.id in BOT_OWNER_IDS:
 
             return True
 
-        # discord.py owner
         try:
 
             if await self.bot.is_owner(member):
@@ -244,6 +308,7 @@ class Security(commands.Cog):
                 return True
 
         except Exception:
+
             pass
 
         return False
@@ -253,7 +318,10 @@ class Security(commands.Cog):
     # STATUS
     # ========================================================
 
-    def status(self, value):
+    def status(
+        self,
+        value
+    ):
 
         if value:
 
@@ -626,7 +694,10 @@ class Security(commands.Cog):
         description="Enable HSL-CORP security"
     )
     @commands.guild_only()
-    async def antinukeenable(self, ctx):
+    async def antinukeenable(
+        self,
+        ctx
+    ):
 
         if not await self.is_owner(
             ctx.author
@@ -652,7 +723,10 @@ class Security(commands.Cog):
         description="Disable HSL-CORP security"
     )
     @commands.guild_only()
-    async def antinukedisable(self, ctx):
+    async def antinukedisable(
+        self,
+        ctx
+    ):
 
         if not await self.is_owner(
             ctx.author
@@ -678,7 +752,10 @@ class Security(commands.Cog):
         description="Show HSL-CORP security status"
     )
     @commands.guild_only()
-    async def automodstatus(self, ctx):
+    async def automodstatus(
+        self,
+        ctx
+    ):
 
         settings = self.get_settings(
             ctx.guild.id
@@ -796,17 +873,40 @@ class Security(commands.Cog):
     # ========================================================
     # MUSIC WHITELIST
     # ========================================================
+    #
+    # /whitelist
+    #     -> list
+    #
+    # /whitelist @User
+    #     -> toggle
+    #
+    # /whitelist @User add
+    #     -> add
+    #
+    # /whitelist @User remove
+    #     -> remove
+    #
+    # !whitelist @User
+    # !whitelist @User add
+    # !whitelist @User remove
+    #
+    # ========================================================
 
     @commands.hybrid_command(
         name="whitelist",
-        description="Whitelist member for music links"
+        description="Manage music link whitelist"
     )
     @commands.guild_only()
     async def whitelist(
         self,
         ctx,
-        member: discord.Member
+        member: discord.Member = None,
+        action: str = "toggle"
     ):
+
+        # ----------------------------------------------------
+        # OWNER ONLY
+        # ----------------------------------------------------
 
         if not await self.is_owner(
             ctx.author
@@ -826,7 +926,160 @@ class Security(commands.Cog):
             []
         )
 
-        if member.id in users:
+        # ----------------------------------------------------
+        # NORMALIZE IDS
+        # ----------------------------------------------------
+
+        normalized_users = []
+
+        for user_id in users:
+
+            try:
+
+                normalized_users.append(
+                    int(user_id)
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                pass
+
+        settings["whitelist_music"] = list(
+            dict.fromkeys(
+                normalized_users
+            )
+        )
+
+        users = settings["whitelist_music"]
+
+        # ====================================================
+        # /WHITELIST
+        # SHOW LIST
+        # ====================================================
+
+        if member is None:
+
+            if not users:
+
+                embed = discord.Embed(
+                    title="🎵 HSL-CORP MUSIC WHITELIST",
+                    description=(
+                        "No members are currently "
+                        "music-whitelisted."
+                    ),
+                    color=discord.Color.orange()
+                )
+
+                embed.set_footer(
+                    text="Music whitelist only bypasses Anti-Link for music commands."
+                )
+
+                return await ctx.send(
+                    embed=embed
+                )
+
+            lines = []
+
+            for index, user_id in enumerate(
+                users,
+                start=1
+            ):
+
+                guild_member = (
+                    ctx.guild.get_member(
+                        user_id
+                    )
+                )
+
+                if guild_member:
+
+                    lines.append(
+                        f"**{index}.** "
+                        f"{guild_member.mention} "
+                        f"`{guild_member.id}`"
+                    )
+
+                else:
+
+                    lines.append(
+                        f"**{index}.** "
+                        f"<@{user_id}> "
+                        f"`{user_id}`"
+                    )
+
+            embed = discord.Embed(
+                title="🎵 HSL-CORP MUSIC WHITELIST",
+                description="\n".join(lines),
+                color=discord.Color.green()
+            )
+
+            embed.add_field(
+                name="Allowed Commands",
+                value=(
+                    "`!play` • `!p` • `/play` • `/p`"
+                ),
+                inline=False
+            )
+
+            embed.set_footer(
+                text="Normal links are still blocked."
+            )
+
+            return await ctx.send(
+                embed=embed
+            )
+
+        # ====================================================
+        # ACTION NORMALIZATION
+        # ====================================================
+
+        action = str(
+            action
+        ).lower().strip()
+
+        if action not in (
+            "add",
+            "remove",
+            "delete",
+            "del",
+            "off",
+            "disable",
+            "on",
+            "enable",
+            "toggle"
+        ):
+
+            return await ctx.send(
+                "❌ Invalid action.\n\n"
+                "**Use:**\n"
+                "`/whitelist @User`\n"
+                "`/whitelist @User add`\n"
+                "`/whitelist @User remove`",
+                delete_after=8
+            )
+
+        # ====================================================
+        # REMOVE
+        # ====================================================
+
+        if action in (
+            "remove",
+            "delete",
+            "del",
+            "off",
+            "disable"
+        ):
+
+            if member.id not in users:
+
+                return await ctx.send(
+                    f"🟡 {member.mention} "
+                    "**music whitelist mein nahi hai.**",
+                    delete_after=5
+                )
 
             users.remove(
                 member.id
@@ -837,24 +1090,81 @@ class Security(commands.Cog):
             )
 
             return await ctx.send(
-                f"🟡 {member.mention} "
+                f"🔴 {member.mention} "
                 "**music whitelist se remove ho gaya.**",
-                delete_after=5
+                delete_after=6
             )
 
-        users.append(
-            member.id
-        )
+        # ====================================================
+        # ADD
+        # ====================================================
 
-        save_data(
-            self.data
-        )
+        if action in (
+            "add",
+            "on",
+            "enable"
+        ):
 
-        await ctx.send(
-            f"🟢 {member.mention} "
-            "**sirf music links ke liye whitelisted hai.**",
-            delete_after=5
-        )
+            if member.id in users:
+
+                return await ctx.send(
+                    f"🟢 {member.mention} "
+                    "**already music whitelist mein hai.**",
+                    delete_after=5
+                )
+
+            users.append(
+                member.id
+            )
+
+            save_data(
+                self.data
+            )
+
+            return await ctx.send(
+                f"🟢 {member.mention} "
+                "**music whitelist mein add ho gaya.**\n"
+                "🎵 `!play`, `!p`, `/play`, `/p` "
+                "music links allowed hain.",
+                delete_after=8
+            )
+
+        # ====================================================
+        # TOGGLE
+        # ====================================================
+
+        if action == "toggle":
+
+            if member.id in users:
+
+                users.remove(
+                    member.id
+                )
+
+                save_data(
+                    self.data
+                )
+
+                return await ctx.send(
+                    f"🟡 {member.mention} "
+                    "**music whitelist se remove ho gaya.**",
+                    delete_after=6
+                )
+
+            users.append(
+                member.id
+            )
+
+            save_data(
+                self.data
+            )
+
+            return await ctx.send(
+                f"🟢 {member.mention} "
+                "**music whitelist mein add ho gaya.**\n"
+                "🎵 Music commands ke saath links allowed hain.",
+                delete_after=8
+            )
 
 
     # ========================================================
@@ -941,13 +1251,6 @@ class Security(commands.Cog):
     #
     # ONLY SERVER OWNER MAY ADD BOTS.
     #
-    # Bot Owner is NOT allowed to add bots unless they
-    # are also the SERVER OWNER.
-    #
-    # Unauthorized:
-    #   1. Bot kicked
-    #   2. Inviter removable roles removed
-    #
     # ========================================================
 
     @commands.Cog.listener()
@@ -1029,7 +1332,6 @@ class Security(commands.Cog):
                         entry.created_at
                     ).total_seconds()
 
-                    # Audit entry must be recent
                     if age < 0:
                         continue
 
@@ -1102,7 +1404,7 @@ class Security(commands.Cog):
             return
 
         # ====================================================
-        # ONLY SERVER OWNER IS ALLOWED
+        # ONLY SERVER OWNER ALLOWED
         # ====================================================
 
         if inviter.id == guild.owner_id:
@@ -1123,7 +1425,7 @@ class Security(commands.Cog):
             return
 
         # ====================================================
-        # EVERYONE ELSE = UNAUTHORIZED
+        # UNAUTHORIZED
         # ====================================================
 
         print(
@@ -1189,7 +1491,7 @@ class Security(commands.Cog):
                 )
 
         # ====================================================
-        # KICK BOT FIRST
+        # KICK BOT
         # ====================================================
 
         await self.kick_unauthorized_bot(
@@ -1204,13 +1506,6 @@ class Security(commands.Cog):
 
             await self.remove_inviter_roles(
                 inviter_member
-            )
-
-        else:
-
-            print(
-                "[SECURITY] ❌ Inviter member "
-                "object unavailable."
             )
 
         print(
@@ -1240,10 +1535,6 @@ class Security(commands.Cog):
 
             return False
 
-        # ----------------------------------------------------
-        # PERMISSION
-        # ----------------------------------------------------
-
         if not me.guild_permissions.kick_members:
 
             print(
@@ -1257,10 +1548,6 @@ class Security(commands.Cog):
 
             return False
 
-        # ----------------------------------------------------
-        # ROLE HIERARCHY
-        # ----------------------------------------------------
-
         print(
             f"[SECURITY] HSL top role: "
             f"{me.top_role} "
@@ -1273,7 +1560,7 @@ class Security(commands.Cog):
             f"({member.top_role.position})"
         )
 
-        if member.id == self.bot.user.id:
+        if self.bot.user and member.id == self.bot.user.id:
 
             print(
                 "[SECURITY] ❌ Target is HSL-CORP itself."
@@ -1294,10 +1581,6 @@ class Security(commands.Cog):
             )
 
             return False
-
-        # ----------------------------------------------------
-        # KICK
-        # ----------------------------------------------------
 
         try:
 
@@ -1354,7 +1637,7 @@ class Security(commands.Cog):
         guild = member.guild
 
         # ----------------------------------------------------
-        # NEVER REMOVE SERVER OWNER ROLES
+        # SERVER OWNER PROTECTED
         # ----------------------------------------------------
 
         if member.id == guild.owner_id:
@@ -1366,24 +1649,10 @@ class Security(commands.Cog):
 
             return
 
-        # ----------------------------------------------------
-        # PROTECTED BOT OWNERS
-        #
-        # NOTE:
-        # For STRICT OWNER-ONLY BOT ADDITION,
-        # BOT_OWNER_IDS do NOT get protection here
-        # when they add a bot.
-        # ----------------------------------------------------
-
         me = guild.me
 
         if me is None:
-
             return
-
-        # ----------------------------------------------------
-        # MANAGE ROLES
-        # ----------------------------------------------------
 
         if not me.guild_permissions.manage_roles:
 
@@ -1397,10 +1666,6 @@ class Security(commands.Cog):
             )
 
             return
-
-        # ----------------------------------------------------
-        # ROLE INFORMATION
-        # ----------------------------------------------------
 
         print(
             f"[SECURITY] 🎭 Inviter: "
@@ -1419,23 +1684,16 @@ class Security(commands.Cog):
             f"({me.top_role.position})"
         )
 
-        # ----------------------------------------------------
-        # FIND REMOVABLE ROLES
-        # ----------------------------------------------------
-
         removable_roles = []
 
         for role in member.roles:
 
-            # @everyone
             if role.is_default():
                 continue
 
-            # Managed/integration role
             if role.managed:
                 continue
 
-            # HSL cannot manage equal/higher roles
             if role >= me.top_role:
 
                 print(
@@ -1450,10 +1708,6 @@ class Security(commands.Cog):
                 role
             )
 
-        # ----------------------------------------------------
-        # NOTHING TO REMOVE
-        # ----------------------------------------------------
-
         if not removable_roles:
 
             print(
@@ -1461,10 +1715,6 @@ class Security(commands.Cog):
             )
 
             return
-
-        # ----------------------------------------------------
-        # REMOVE ROLES
-        # ----------------------------------------------------
 
         removed = 0
 
@@ -1535,9 +1785,81 @@ class Security(commands.Cog):
             guild_id
         )
 
-        return user_id in settings.get(
+        whitelist = settings.get(
             "whitelist_music",
             []
+        )
+
+        try:
+
+            user_id = int(
+                user_id
+            )
+
+        except (
+            TypeError,
+            ValueError
+        ):
+
+            return False
+
+        for allowed_id in whitelist:
+
+            try:
+
+                if int(allowed_id) == user_id:
+
+                    return True
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                continue
+
+        return False
+
+
+    # ========================================================
+    # MUSIC COMMAND DETECTION
+    # ========================================================
+
+    def is_music_command(
+        self,
+        content
+    ):
+
+        if not content:
+            return False
+
+        content = content.strip().lower()
+
+        if not content:
+            return False
+
+        first_word = content.split(
+            maxsplit=1
+        )[0]
+
+        # ----------------------------------------------------
+        # IMPORTANT
+        #
+        # !play
+        # !p
+        #
+        # /play and /p are included for text-command
+        # compatibility.
+        #
+        # Actual Discord slash commands do NOT pass through
+        # on_message in the same way.
+        # ----------------------------------------------------
+
+        return first_word in (
+            "!play",
+            "!p",
+            "/play",
+            "/p"
         )
 
 
@@ -1551,8 +1873,16 @@ class Security(commands.Cog):
         message: discord.Message
     ):
 
+        # ----------------------------------------------------
+        # IGNORE BOTS
+        # ----------------------------------------------------
+
         if message.author.bot:
             return
+
+        # ----------------------------------------------------
+        # IGNORE DMs
+        # ----------------------------------------------------
 
         if not message.guild:
             return
@@ -1560,6 +1890,13 @@ class Security(commands.Cog):
         settings = self.get_settings(
             message.guild.id
         )
+
+        content = (
+            message.content
+            or ""
+        ).strip()
+
+        lower_content = content.lower()
 
         # ====================================================
         # DUPLICATE
@@ -1626,9 +1963,9 @@ class Security(commands.Cog):
             True
         ):
 
-            content = (
-                message.content.lower()
-            )
+            # ------------------------------------------------
+            # CHECK LINK
+            # ------------------------------------------------
 
             link_patterns = (
                 "http://",
@@ -1639,45 +1976,64 @@ class Security(commands.Cog):
             )
 
             is_link = any(
-                x in content
-                for x in link_patterns
+                pattern in lower_content
+                for pattern in link_patterns
             )
+
+            # ------------------------------------------------
+            # ONLY RUN LINK SECURITY IF LINK EXISTS
+            # ------------------------------------------------
 
             if is_link:
 
-                # --------------------------------------------
-                # SERVER OWNER
-                # --------------------------------------------
+                # ============================================
+                # OWNER BYPASS
+                # ============================================
 
                 if message.author.id == message.guild.owner_id:
 
+                    print(
+                        f"[SECURITY] 👑 Owner link allowed: "
+                        f"{message.author}"
+                    )
+
                     await self.bot.process_commands(
                         message
                     )
 
                     return
 
-                # --------------------------------------------
-                # BOT OWNER
-                # --------------------------------------------
+                # ============================================
+                # BOT OWNER BYPASS
+                # ============================================
 
                 if message.author.id in BOT_OWNER_IDS:
 
+                    print(
+                        f"[SECURITY] 👑 Bot owner link allowed: "
+                        f"{message.author}"
+                    )
+
                     await self.bot.process_commands(
                         message
                     )
 
                     return
 
-                # --------------------------------------------
-                # DISCORD.PY OWNER
-                # --------------------------------------------
+                # ============================================
+                # DISCORD.PY OWNER BYPASS
+                # ============================================
 
                 try:
 
                     if await self.bot.is_owner(
                         message.author
                     ):
+
+                        print(
+                            f"[SECURITY] 👑 Discord.py owner "
+                            f"link allowed: {message.author}"
+                        )
 
                         await self.bot.process_commands(
                             message
@@ -1686,52 +2042,90 @@ class Security(commands.Cog):
                         return
 
                 except Exception:
+
                     pass
 
-                # --------------------------------------------
+                # ============================================
                 # MUSIC COMMAND
-                # --------------------------------------------
+                # ============================================
 
-                is_music_command = (
-
-                    content.startswith("!play")
-                    or
-                    content.startswith("/play")
-                    or
-                    content.startswith("!p ")
-                    or
-                    content.startswith("/p ")
+                is_music = self.is_music_command(
+                    content
                 )
 
-                if (
-                    is_music_command
-                    and
-                    self.music_whitelisted(
+                print(
+                    f"[SECURITY] LINK CHECK | "
+                    f"User={message.author} "
+                    f"({message.author.id}) | "
+                    f"MusicCommand={is_music} | "
+                    f"Whitelisted="
+                    f"{self.music_whitelisted(message.guild.id, message.author.id)}"
+                )
+
+                # ============================================
+                # MUSIC WHITELIST
+                # ============================================
+
+                if is_music:
+
+                    allowed = self.music_whitelisted(
                         message.guild.id,
                         message.author.id
                     )
-                ):
 
-                    await self.bot.process_commands(
-                        message
-                    )
+                    if allowed:
 
-                    return
+                        print(
+                            f"[SECURITY] 🎵 MUSIC LINK "
+                            f"ALLOWED: {message.author}"
+                        )
 
-                # --------------------------------------------
-                # DELETE LINK
-                # --------------------------------------------
+                        # ------------------------------------
+                        # VERY IMPORTANT
+                        #
+                        # DO NOT DELETE
+                        # DO NOT TIMEOUT
+                        #
+                        # Let music.py receive !play.
+                        # ------------------------------------
+
+                        await self.bot.process_commands(
+                            message
+                        )
+
+                        return
+
+                    else:
+
+                        print(
+                            f"[SECURITY] ❌ MUSIC LINK "
+                            f"NOT WHITELISTED: {message.author}"
+                        )
+
+                # ============================================
+                # DELETE UNAUTHORIZED LINK
+                # ============================================
 
                 try:
 
                     await message.delete()
 
-                except Exception:
-                    pass
+                except discord.Forbidden:
 
-                # --------------------------------------------
+                    print(
+                        "[SECURITY] ❌ Cannot delete link."
+                    )
+
+                except Exception as e:
+
+                    print(
+                        "[SECURITY] Delete error:",
+                        repr(e)
+                    )
+
+                # ============================================
                 # TIMEOUT
-                # --------------------------------------------
+                # ============================================
 
                 try:
 
@@ -1747,6 +2141,24 @@ class Security(commands.Cog):
                         )
                     )
 
+                    print(
+                        f"[SECURITY] 🔨 Timed out: "
+                        f"{message.author}"
+                    )
+
+                except discord.Forbidden:
+
+                    print(
+                        "[SECURITY] ❌ Cannot timeout user."
+                    )
+
+                except discord.HTTPException as e:
+
+                    print(
+                        "[SECURITY] ❌ Timeout HTTP error:",
+                        repr(e)
+                    )
+
                 except Exception as e:
 
                     print(
@@ -1754,9 +2166,9 @@ class Security(commands.Cog):
                         repr(e)
                     )
 
-                # --------------------------------------------
+                # ============================================
                 # WARNING
-                # --------------------------------------------
+                # ============================================
 
                 try:
 
