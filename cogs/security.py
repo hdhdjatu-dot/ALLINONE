@@ -133,7 +133,9 @@ class Security(commands.Cog):
 
             self.data[guild_id]["whitelist_music"] = []
 
-            save_data(self.data)
+            save_data(
+                self.data
+            )
 
         settings = self.data[guild_id]
 
@@ -165,21 +167,27 @@ class Security(commands.Cog):
         if not member.guild:
             return False
 
-        # Server owner
+        # ----------------------------------------------------
+        # SERVER OWNER
+        # ----------------------------------------------------
+
         if member.id == member.guild.owner_id:
-
             return True
 
-        # Manual bot owners
+        # ----------------------------------------------------
+        # MANUAL BOT OWNERS
+        # ----------------------------------------------------
+
         if member.id in BOT_OWNER_IDS:
-
             return True
 
-        # discord.py owner
+        # ----------------------------------------------------
+        # DISCORD.PY BOT OWNER
+        # ----------------------------------------------------
+
         try:
 
             if await self.bot.is_owner(member):
-
                 return True
 
         except Exception as e:
@@ -199,6 +207,9 @@ class Security(commands.Cog):
     async def is_protected_member(self, member):
 
         if not member:
+            return False
+
+        if not member.guild:
             return False
 
         if member.id == member.guild.owner_id:
@@ -560,11 +571,8 @@ class Security(commands.Cog):
         await asyncio.sleep(5)
 
         try:
-
             await message.delete()
-
         except Exception:
-
             pass
 
 
@@ -875,6 +883,7 @@ class Security(commands.Cog):
 
     # ========================================================
     # ANTI-BOT
+    # STRICT OWNER-ONLY BOT ADDITION
     # ========================================================
 
     @commands.Cog.listener()
@@ -883,7 +892,10 @@ class Security(commands.Cog):
         member: discord.Member
     ):
 
-        # Only bots
+        # ----------------------------------------------------
+        # ONLY BOTS
+        # ----------------------------------------------------
+
         if not member.bot:
             return
 
@@ -893,7 +905,10 @@ class Security(commands.Cog):
             guild.id
         )
 
-        # Anti-Bot disabled
+        # ----------------------------------------------------
+        # ANTI-BOT DISABLED
+        # ----------------------------------------------------
+
         if not settings.get(
             "antibot",
             True
@@ -901,41 +916,86 @@ class Security(commands.Cog):
             return
 
         print(
-            f"[SECURITY] 🚨 Bot joined: {member} "
-            f"({member.id})"
+            f"[SECURITY] 🚨 BOT JOINED: "
+            f"{member} ({member.id})"
         )
+
+        print(
+            f"[SECURITY] Guild: "
+            f"{guild.name} ({guild.id})"
+        )
+
+        # ----------------------------------------------------
+        # GET SECURITY BOT MEMBER
+        # ----------------------------------------------------
+
+        me = guild.me
+
+        if not me:
+
+            print(
+                "[SECURITY] ❌ Cannot find HSL-CORP bot member."
+            )
+
+            return
+
+        # ----------------------------------------------------
+        # FIND INVITER FROM AUDIT LOG
+        # ----------------------------------------------------
 
         inviter = None
 
-        # ----------------------------------------------------
-        # WAIT FOR AUDIT LOG
-        #
-        # Discord audit log can appear slightly after
-        # on_member_join.
-        # ----------------------------------------------------
-
-        for attempt in range(5):
+        # on_member_join can fire BEFORE audit log entry.
+        # Therefore wait and retry.
+        for attempt in range(8):
 
             try:
 
+                # First attempt slightly faster,
+                # later attempts give Discord more time.
                 await asyncio.sleep(
-                    0.8
+                    0.7 if attempt == 0 else 0.8
                 )
 
                 async for entry in guild.audit_logs(
-                    limit=15,
+                    limit=25,
                     action=discord.AuditLogAction.bot_add
                 ):
+
+                    # ------------------------------------------------
+                    # MUST HAVE TARGET
+                    # ------------------------------------------------
 
                     if not entry.target:
                         continue
 
+                    # ------------------------------------------------
+                    # TARGET MUST BE THIS EXACT BOT
+                    # ------------------------------------------------
+
                     if entry.target.id != member.id:
                         continue
 
-                    # Ignore very old audit entries
-                    if entry.created_at < member.joined_at:
+                    # ------------------------------------------------
+                    # IGNORE OLD ENTRIES
+                    # ------------------------------------------------
+
+                    now = discord.utils.utcnow()
+
+                    age = (
+                        now - entry.created_at
+                    ).total_seconds()
+
+                    # Audit entry should be recent.
+                    if age < 0:
                         continue
+
+                    if age > 30:
+                        continue
+
+                    # ------------------------------------------------
+                    # FOUND
+                    # ------------------------------------------------
 
                     inviter = entry.user
 
@@ -950,7 +1010,19 @@ class Security(commands.Cog):
                     "[SECURITY] ❌ Cannot read audit logs."
                 )
 
+                print(
+                    "[SECURITY] Give HSL-CORP "
+                    "`View Audit Log` permission."
+                )
+
                 break
+
+            except discord.HTTPException as e:
+
+                print(
+                    "[SECURITY] AUDIT LOG HTTP ERROR:",
+                    repr(e)
+                )
 
             except Exception as e:
 
@@ -959,22 +1031,48 @@ class Security(commands.Cog):
                     repr(e)
                 )
 
-        # ----------------------------------------------------
+        # ====================================================
         # INVITER NOT FOUND
-        # ----------------------------------------------------
+        # ====================================================
 
         if not inviter:
 
             print(
-                f"[SECURITY] ⚠️ Could not determine who "
-                f"added {member}."
+                f"[SECURITY] ⚠️ Could not determine "
+                f"who added {member}."
             )
 
-            # Still kick unauthorized bot if possible.
-            # This prevents unknown bots staying in server.
+            # ------------------------------------------------
+            # STRICT SECURITY:
+            # UNKNOWN INVITER = BOT GETS KICKED
+            # ------------------------------------------------
+
             try:
 
-                if await self.is_protected_member(member):
+                # Do NOT check is_protected_member(member)
+                # here. The NEW BOT is not the inviter.
+                #
+                # This was one of the bugs in the old code.
+
+                if member.id == guild.owner_id:
+
+                    print(
+                        "[SECURITY] New bot somehow matches "
+                        "guild owner ID. Skipping."
+                    )
+
+                    return
+
+                if member.top_role >= me.top_role:
+
+                    print(
+                        "[SECURITY] ❌ Cannot kick bot."
+                    )
+
+                    print(
+                        "[SECURITY] HSL-CORP role must be "
+                        "ABOVE the unauthorized bot."
+                    )
 
                     return
 
@@ -987,15 +1085,18 @@ class Security(commands.Cog):
                 )
 
                 print(
-                    "[SECURITY] ✅ Bot kicked "
-                    "(inviter unknown)"
+                    "[SECURITY] ✅ Unknown-inviter bot kicked."
                 )
 
             except discord.Forbidden:
 
                 print(
-                    "[SECURITY] ❌ Cannot kick bot. "
-                    "Check bot role hierarchy."
+                    "[SECURITY] ❌ Cannot kick bot."
+                )
+
+                print(
+                    "[SECURITY] Check Kick Members "
+                    "permission and role hierarchy."
                 )
 
             except Exception as e:
@@ -1007,24 +1108,42 @@ class Security(commands.Cog):
 
             return
 
-        # ----------------------------------------------------
+        # ====================================================
+        # INVITER FOUND
+        # ====================================================
+
+        print(
+            f"[SECURITY] 👤 Bot added by: "
+            f"{inviter} ({inviter.id})"
+        )
+
+        # ====================================================
         # PROTECTED INVITER
-        # ----------------------------------------------------
+        #
+        # ONLY:
+        # 1. SERVER OWNER
+        # 2. BOT OWNER IDS
+        # 3. discord.py BOT OWNER
+        # ====================================================
 
         if await self.is_protected_member(
             inviter
         ):
 
             print(
-                f"[SECURITY] ✅ Protected user "
-                f"{inviter} added bot."
+                f"[SECURITY] ✅ AUTHORIZED BOT ADDITION"
+            )
+
+            print(
+                f"[SECURITY] Protected user: "
+                f"{inviter}"
             )
 
             return
 
-        # ----------------------------------------------------
+        # ====================================================
         # UNAUTHORIZED BOT
-        # ----------------------------------------------------
+        # ====================================================
 
         print(
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -1035,33 +1154,49 @@ class Security(commands.Cog):
         )
 
         print(
-            f"[SECURITY] Bot: {member}"
+            f"[SECURITY] Bot: "
+            f"{member} ({member.id})"
         )
 
         print(
-            f"[SECURITY] Added by: {inviter}"
+            f"[SECURITY] Added by: "
+            f"{inviter} ({inviter.id})"
         )
 
         print(
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # KICK BOT
-        # ----------------------------------------------------
+        # ====================================================
 
         try:
 
-            await member.kick(
-                reason=(
-                    "HSL Security - "
-                    "Unauthorized bot addition"
-                )
-            )
+            # Check bot role hierarchy before trying.
+            if member.top_role >= me.top_role:
 
-            print(
-                "[SECURITY] ✅ Unauthorized bot kicked."
-            )
+                print(
+                    "[SECURITY] ❌ BOT KICK FAILED."
+                )
+
+                print(
+                    "[SECURITY] HSL-CORP role must be "
+                    "ABOVE the unauthorized bot."
+                )
+
+            else:
+
+                await member.kick(
+                    reason=(
+                        "HSL Security - "
+                        "Unauthorized bot addition"
+                    )
+                )
+
+                print(
+                    "[SECURITY] ✅ Unauthorized bot kicked."
+                )
 
         except discord.Forbidden:
 
@@ -1074,6 +1209,13 @@ class Security(commands.Cog):
                 "is ABOVE the unauthorized bot."
             )
 
+        except discord.HTTPException as e:
+
+            print(
+                "[SECURITY] BOT KICK HTTP ERROR:",
+                repr(e)
+            )
+
         except Exception as e:
 
             print(
@@ -1081,9 +1223,9 @@ class Security(commands.Cog):
                 repr(e)
             )
 
-        # ----------------------------------------------------
+        # ====================================================
         # REMOVE INVITER ROLES
-        # ----------------------------------------------------
+        # ====================================================
 
         if isinstance(
             inviter,
@@ -1107,7 +1249,10 @@ class Security(commands.Cog):
         if not member:
             return
 
-        # Never touch protected users
+        # ----------------------------------------------------
+        # NEVER TOUCH PROTECTED USERS
+        # ----------------------------------------------------
+
         if await self.is_protected_member(
             member
         ):
@@ -1118,16 +1263,35 @@ class Security(commands.Cog):
         if not me:
             return
 
+        # ----------------------------------------------------
+        # MANAGE ROLES CHECK
+        # ----------------------------------------------------
+
+        if not me.guild_permissions.manage_roles:
+
+            print(
+                "[SECURITY] ❌ Cannot remove roles."
+            )
+
+            print(
+                "[SECURITY] Missing Manage Roles permission."
+            )
+
+            return
+
         removable = []
 
         for role in member.roles:
 
+            # @everyone
             if role.is_default():
                 continue
 
+            # Managed/integration role
             if role.managed:
                 continue
 
+            # Bot cannot remove same/higher role
             if role >= me.top_role:
                 continue
 
@@ -1138,38 +1302,69 @@ class Security(commands.Cog):
         if not removable:
 
             print(
-                "[SECURITY] No removable roles found."
+                f"[SECURITY] No removable roles found "
+                f"for {member}."
             )
 
             return
 
-        try:
+        # ----------------------------------------------------
+        # REMOVE ALL REMOVABLE ROLES
+        # ----------------------------------------------------
 
-            await member.remove_roles(
-                *removable,
-                reason=(
-                    "HSL Security - "
-                    "Unauthorized bot addition"
+        removed = 0
+
+        for role in removable:
+
+            try:
+
+                await member.remove_roles(
+                    role,
+                    reason=(
+                        "HSL Security - "
+                        "Unauthorized bot addition"
+                    )
                 )
-            )
 
-            print(
-                f"[SECURITY] Removed roles from "
-                f"{member}"
-            )
+                removed += 1
 
-        except discord.Forbidden:
+                print(
+                    f"[SECURITY] 🗑️ Removed role "
+                    f"'{role.name}' from {member}"
+                )
 
-            print(
-                "[SECURITY] ❌ Cannot remove roles."
-            )
+                await asyncio.sleep(
+                    0.15
+                )
 
-        except Exception as e:
+            except discord.Forbidden:
 
-            print(
-                "[SECURITY] ROLE REMOVE ERROR:",
-                repr(e)
-            )
+                print(
+                    f"[SECURITY] ❌ Cannot remove "
+                    f"role '{role.name}' from {member}"
+                )
+
+            except discord.HTTPException as e:
+
+                print(
+                    f"[SECURITY] ROLE REMOVE HTTP ERROR "
+                    f"for '{role.name}':",
+                    repr(e)
+                )
+
+            except Exception as e:
+
+                print(
+                    f"[SECURITY] ROLE REMOVE ERROR "
+                    f"for '{role.name}':",
+                    repr(e)
+                )
+
+        print(
+            f"[SECURITY] ✅ Removed "
+            f"{removed}/{len(removable)} "
+            f"removable roles from {member}"
+        )
 
 
     # ========================================================
@@ -1202,8 +1397,16 @@ class Security(commands.Cog):
         message: discord.Message
     ):
 
+        # ----------------------------------------------------
+        # IGNORE BOTS
+        # ----------------------------------------------------
+
         if message.author.bot:
             return
+
+        # ----------------------------------------------------
+        # IGNORE DMs
+        # ----------------------------------------------------
 
         if not message.guild:
             return
@@ -1246,7 +1449,9 @@ class Security(commands.Cog):
                         "**duplicate message detected.**"
                     )
 
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(
+                        2
+                    )
 
                     await warning.delete()
 
@@ -1415,7 +1620,9 @@ class Security(commands.Cog):
                         "**link detected — 10 minute timeout.**"
                     )
 
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(
+                        2
+                    )
 
                     await warning.delete()
 
