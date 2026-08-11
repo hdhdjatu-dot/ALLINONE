@@ -4,7 +4,15 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        ffmpeg \
        libopus0 \
+       curl \
+       unzip \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Deno for yt-dlp YouTube JS challenge solving
+RUN curl -fsSL https://deno.land/install.sh | sh
+
+ENV DENO_INSTALL=/root/.deno
+ENV PATH=/root/.deno/bin:$PATH
 
 WORKDIR /app
 

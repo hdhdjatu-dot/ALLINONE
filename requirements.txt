@@ -1,6 +1,6 @@
 discord.py[voice]
 python-dotenv
 PyNaCl
-yt-dlp
+yt-dlp[default]
 davey
 ffmpeg-python
