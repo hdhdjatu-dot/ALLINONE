@@ -304,6 +304,9 @@ class MusicPlayer:
 
         self.now_playing_message = None
 
+        # Discord activity for the currently playing song
+        self.activity_enabled = True
+
 
     # =====================================================
     # RESOLVE SONG
@@ -1024,6 +1027,24 @@ class MusicPlayer:
                 song.title
             )
 
+            # Stylish Discord activity - does not affect playback
+            if self.activity_enabled:
+                try:
+                    activity_title = song.title
+                    if len(activity_title) > 100:
+                        activity_title = activity_title[:97] + "..."
+
+                    await self.bot.change_presence(
+                        activity=discord.Activity(
+                            type=discord.ActivityType.listening,
+                            name=f"🎧 HSL • {activity_title}"
+                        )
+                    )
+                except Exception as e:
+                    print(
+                        "[MUSIC] ⚠️ Activity update error:",
+                        repr(e)
+                    )
 
             await self.send_now_playing()
 
@@ -1435,6 +1456,13 @@ class MusicControlView(
 
 
         self.player.voice = None
+
+        try:
+            await self.player.bot.change_presence(
+                activity=None
+            )
+        except Exception:
+            pass
 
 
         try:
@@ -1945,6 +1973,13 @@ class Music(
 
 
         player.voice = None
+
+        try:
+            await self.bot.change_presence(
+                activity=None
+            )
+        except Exception:
+            pass
 
 
         await ctx.send(
