@@ -19,6 +19,7 @@ DATA_FILE = "security_data.json"
 # ============================================================
 
 # IMPORTANT:
+#
 # Yahan DISCORD USER IDs hone chahiye.
 # Server IDs nahi.
 #
@@ -852,6 +853,10 @@ class Security(commands.Cog):
     #
     # Sirf server owner / bot owner.
     #
+    # IMPORTANT:
+    # Bot ka bheja hua message delete nahi hoga.
+    # Sirf original !say command delete hoga.
+    #
     # ========================================================
 
     @commands.hybrid_command(
@@ -899,13 +904,13 @@ class Security(commands.Cog):
 
         try:
 
+            # BOT MESSAGE PERMANENT RAHEGA
             await ctx.send(
                 text,
                 allowed_mentions=discord.AllowedMentions.none()
             )
 
-            # Delete original !say command
-
+            # SIRF ORIGINAL !say COMMAND DELETE HOGA
             if ctx.message:
 
                 try:
@@ -1961,10 +1966,6 @@ class Security(commands.Cog):
                         f"{message.author}"
                     )
 
-                    await self.bot.process_commands(
-                        message
-                    )
-
                     return
 
                 # BOT OWNER BYPASS
@@ -1974,10 +1975,6 @@ class Security(commands.Cog):
                     print(
                         f"[SECURITY] 👑 Bot owner link allowed: "
                         f"{message.author}"
-                    )
-
-                    await self.bot.process_commands(
-                        message
                     )
 
                     return
@@ -1993,10 +1990,6 @@ class Security(commands.Cog):
                         print(
                             f"[SECURITY] 👑 Discord.py owner "
                             f"link allowed: {message.author}"
-                        )
-
-                        await self.bot.process_commands(
-                            message
                         )
 
                         return
@@ -2034,10 +2027,6 @@ class Security(commands.Cog):
                         print(
                             f"[SECURITY] 🎵 MUSIC LINK "
                             f"ALLOWED: {message.author}"
-                        )
-
-                        await self.bot.process_commands(
-                            message
                         )
 
                         return
@@ -2123,11 +2112,21 @@ class Security(commands.Cog):
 
                 return
 
-        # COMMAND PROCESSING
-
-        await self.bot.process_commands(
-            message
-        )
+        # ====================================================
+        # IMPORTANT
+        # ====================================================
+        #
+        # YAHAN process_commands() NAHI HAI.
+        #
+        # Is Cog ke on_message() se command dobara process
+        # nahi hogi.
+        #
+        # discord.py Bot ka normal on_message() commands
+        # ko process karega.
+        #
+        # Isse !say double execute nahi hoga.
+        #
+        # ====================================================
 
 
     # ========================================================
