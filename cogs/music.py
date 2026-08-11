@@ -1,3 +1,4 @@
+
 import asyncio
 import os
 import shutil
@@ -303,9 +304,6 @@ class MusicPlayer:
 
         self.now_playing_message = None
 
-        # Discord activity for the currently playing song
-        self.activity_enabled = True
-
 
     # =====================================================
     # RESOLVE SONG
@@ -563,6 +561,8 @@ class MusicPlayer:
             self.current.requester
         )
 
+        # Multiple queries so autoplay
+        # has more chances to find a song.
         autoplay_queries = [
 
             "popular Hindi songs",
@@ -583,6 +583,8 @@ class MusicPlayer:
 
         ]
 
+        # Try several searches instead of
+        # giving up after one failure.
         random.shuffle(
             autoplay_queries
         )
@@ -666,6 +668,7 @@ class MusicPlayer:
                         ):
                             continue
 
+                        # Prefer actual YouTube videos
                         if (
                             "youtube.com"
                             not in url
@@ -769,6 +772,7 @@ class MusicPlayer:
         if not self.voice.is_connected():
             return
 
+        # Don't start two songs simultaneously.
         if self.starting:
             return
 
@@ -856,6 +860,8 @@ class MusicPlayer:
             )
 
 
+            # If a stream failed, retry once with
+            # another autoplay song.
             if not stream_url:
 
                 print(
@@ -1018,48 +1024,6 @@ class MusicPlayer:
                 song.title
             )
 
-            # Stylish Discord activity
-            if self.activity_enabled:
-
-                try:
-
-                    activity_title = (
-                        song.title
-                    )
-
-                    if len(
-                        activity_title
-                    ) > 100:
-
-                        activity_title = (
-                            activity_title[:97]
-                            + "..."
-                        )
-
-                    await self.bot.change_presence(
-
-                        activity=discord.Activity(
-
-                            type=(
-                                discord.ActivityType.listening
-                            ),
-
-                            name=(
-                                f"🎧 HSL • "
-                                f"{activity_title}"
-                            )
-
-                        )
-
-                    )
-
-                except Exception as e:
-
-                    print(
-                        "[MUSIC] ⚠️ Activity update error:",
-                        repr(e)
-                    )
-
 
             await self.send_now_playing()
 
@@ -1088,6 +1052,8 @@ class MusicPlayer:
         if token != self.play_token:
             return
 
+        # Wait until Discord's voice player
+        # completely finishes stopping.
         await asyncio.sleep(
             0.8
         )
@@ -1314,7 +1280,10 @@ class MusicControlView(
 
         await interaction.response.defer()
 
+
+        # Invalidate old callback.
         self.player.play_token += 1
+
 
         if (
             self.player.voice.is_playing()
@@ -1323,11 +1292,19 @@ class MusicControlView(
 
             self.player.voice.stop()
 
+
+        # IMPORTANT:
+        # Do NOT clear current here.
+        #
+        # Autoplay needs current song information
+        # to search for the next song.
         self.player.starting = False
+
 
         await asyncio.sleep(
             0.5
         )
+
 
         await self.player.play_next()
 
@@ -1429,6 +1406,7 @@ class MusicControlView(
 
         await interaction.response.defer()
 
+
         self.player.play_token += 1
 
         self.player.queue.clear()
@@ -1436,6 +1414,7 @@ class MusicControlView(
         self.player.current = None
 
         self.player.starting = False
+
 
         if self.player.voice:
 
@@ -1454,17 +1433,9 @@ class MusicControlView(
 
                 pass
 
+
         self.player.voice = None
 
-        try:
-
-            await self.player.bot.change_presence(
-                activity=None
-            )
-
-        except Exception:
-
-            pass
 
         try:
 
@@ -1811,6 +1782,7 @@ class Music(
             )
 
 
+        # Invalidate current callback.
         player.play_token += 1
 
 
@@ -1822,6 +1794,14 @@ class Music(
             player.voice.stop()
 
 
+        # IMPORTANT:
+        # Keep current for autoplay.
+        #
+        # Previous version did:
+        # player.current = None
+        #
+        # That disabled autoplay because
+        # play_next() requires current.
         player.starting = False
 
 
@@ -1965,16 +1945,6 @@ class Music(
 
 
         player.voice = None
-
-        try:
-
-            await self.bot.change_presence(
-                activity=None
-            )
-
-        except Exception:
-
-            pass
 
 
         await ctx.send(
@@ -2210,6 +2180,8 @@ class Music(
         )
 
 
+        # If autoplay was just enabled while
+        # nothing is playing, try starting it.
         if (
             player.autoplay
             and player.voice
@@ -2268,3 +2240,4 @@ async def setup(
     print(
         "[MUSIC] ✅ Music cog loaded successfully."
     )
+
