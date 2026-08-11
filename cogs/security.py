@@ -18,22 +18,51 @@ DATA_FILE = "security_data.json"
 # BOT OWNERS
 # ============================================================
 #
-# IMPORTANT:
 # Yahan DISCORD USER IDs hone chahiye.
 # Server IDs nahi.
 #
-# In users ko owner-level SECURITY COMMAND access milega.
+# Server Owner ko automatically security bypass milega.
+#
+# STRICT ANTI-BOT:
+# Sirf Server Owner ya whitelisted bot ID bot ko invite
+# kar sakta hai.
 #
 # NOTE:
-# STRICT ANTI-BOT mein sirf SERVER OWNER bot add kar sakta hai.
-#
+# BOT_OWNER_IDS wale users security commands use kar sakte hain,
+# lekin Anti-Bot mein unke invite kiye bot ko bhi whitelist
+# karna hoga unless tum explicitly server owner ko hi allow
+# karna chahte ho.
 # ============================================================
 
 BOT_OWNER_IDS = {
     1519933809402056805,
     1435943252455981080,
     1517901703263944758,
-    1514802803024072816,
+}
+
+
+# ============================================================
+# OWNER ROLE IDS
+# ============================================================
+#
+# /whitelistbot ko use karne wale special Owner roles.
+#
+# Multiple servers ke Owner role IDs yahan add kar sakte ho.
+#
+# Example:
+#
+# OWNER_ROLE_IDS = {
+#     1451197118025826364,
+#     123456789012345678,
+#     987654321098765432,
+# }
+#
+# Role IDs globally unique hote hain, isliye different
+# servers ke roles yahan safely add kiye ja sakte hain.
+# ============================================================
+
+OWNER_ROLE_IDS = {
+    1451197118025826364,
 }
 
 
@@ -48,7 +77,8 @@ DEFAULT_SETTINGS = {
     "antimod": True,
     "antispam": True,
     "duplicate": True,
-    "whitelist_music": []
+    "whitelist_music": [],
+    "whitelist_bots": [],
 }
 
 
@@ -187,13 +217,26 @@ class Security(commands.Cog):
 
             changed = True
 
-        cleaned = []
+        if not isinstance(
+            settings.get("whitelist_bots"),
+            list
+        ):
+
+            settings["whitelist_bots"] = []
+
+            changed = True
+
+        # ----------------------------------------------------
+        # CLEAN MUSIC WHITELIST
+        # ----------------------------------------------------
+
+        cleaned_music = []
 
         for user_id in settings["whitelist_music"]:
 
             try:
 
-                cleaned.append(
+                cleaned_music.append(
                     int(user_id)
                 )
 
@@ -204,9 +247,40 @@ class Security(commands.Cog):
 
                 changed = True
 
-        if cleaned != settings["whitelist_music"]:
+        if cleaned_music != settings["whitelist_music"]:
 
-            settings["whitelist_music"] = cleaned
+            settings["whitelist_music"] = cleaned_music
+
+            changed = True
+
+        # ----------------------------------------------------
+        # CLEAN BOT WHITELIST
+        # ----------------------------------------------------
+
+        cleaned_bots = []
+
+        for bot_id in settings["whitelist_bots"]:
+
+            try:
+
+                cleaned_bots.append(
+                    int(bot_id)
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                changed = True
+
+        cleaned_bots = list(
+            dict.fromkeys(cleaned_bots)
+        )
+
+        if cleaned_bots != settings["whitelist_bots"]:
+
+            settings["whitelist_bots"] = cleaned_bots
 
             changed = True
 
@@ -258,6 +332,70 @@ class Security(commands.Cog):
                 "[SECURITY] BOT OWNER CHECK ERROR:",
                 repr(e)
             )
+
+        return False
+
+
+    # ========================================================
+    # WHITELISTBOT OWNER ROLE CHECK
+    # ========================================================
+    #
+    # Permission:
+    #
+    # 1. Server Owner
+    # 2. Manual Bot Owner
+    # 3. Discord.py Bot Owner
+    # 4. Member having any role from OWNER_ROLE_IDS
+    #
+    # Ye check specifically /whitelistbot ke liye hai.
+    # ========================================================
+
+    async def has_whitelistbot_access(
+        self,
+        member
+    ):
+
+        if not member:
+            return False
+
+        if not member.guild:
+            return False
+
+        # SERVER OWNER
+
+        if member.id == member.guild.owner_id:
+
+            return True
+
+        # MANUAL BOT OWNER
+
+        if member.id in BOT_OWNER_IDS:
+
+            return True
+
+        # DISCORD.PY BOT OWNER
+
+        try:
+
+            if await self.bot.is_owner(member):
+
+                return True
+
+        except Exception:
+
+            pass
+
+        # OWNER ROLE ID
+
+        for role in getattr(
+            member,
+            "roles",
+            []
+        ):
+
+            if role.id in OWNER_ROLE_IDS:
+
+                return True
 
         return False
 
@@ -850,19 +988,6 @@ class Security(commands.Cog):
     # ========================================================
     # SAY COMMAND
     # ========================================================
-    #
-    # HARD CHECK:
-    #
-    # SERVER OWNER       -> ALLOWED
-    # BOT_OWNER_IDS      -> ALLOWED
-    #
-    # ADMIN              -> DENIED
-    # MODERATOR          -> DENIED
-    # MANAGE SERVER      -> DENIED
-    # MANAGE MESSAGES    -> DENIED
-    # NORMAL USER        -> DENIED
-    #
-    # ========================================================
 
     @commands.hybrid_command(
         name="say",
@@ -876,76 +1001,36 @@ class Security(commands.Cog):
         text: str
     ):
 
-        # ====================================================
-        # HARD OWNER CHECK
-        # ====================================================
+        # ----------------------------------------------------
+        # OWNER ONLY
+        # ----------------------------------------------------
 
-        user_id = ctx.author.id
-
-        server_owner_id = ctx.guild.owner_id
-
-        # ONLY SERVER OWNER OR MANUAL BOT OWNER
-        #
-        # IMPORTANT:
-        # self.bot.is_owner() intentionally NOT used here.
-        #
-        # This prevents any other bot-owner configuration
-        # from accidentally giving access.
-
-        if (
-            user_id != server_owner_id
-            and user_id not in BOT_OWNER_IDS
+        if not await self.is_owner(
+            ctx.author
         ):
 
-            print(
-                f"[SECURITY] ❌ BLOCKED !say | "
-                f"User={ctx.author} "
-                f"ID={user_id} | "
-                f"Guild={ctx.guild.name} "
-                f"({ctx.guild.id})"
-            )
+            # Prefix !say message delete
+            if ctx.message:
 
-            try:
+                try:
 
-                await ctx.send(
-                    "❌ **Only the Server Owner or HSL-CORP Bot Owner can use `!say`.**",
-                    delete_after=5
-                )
+                    await ctx.message.delete()
 
-            except Exception:
+                except (
+                    discord.Forbidden,
+                    discord.NotFound,
+                    discord.HTTPException
+                ):
 
-                pass
+                    pass
 
             return
 
-        # ====================================================
+        # ----------------------------------------------------
         # EMPTY MESSAGE
-        # ====================================================
+        # ----------------------------------------------------
 
         if not text or not text.strip():
-
-            return await ctx.send(
-                "❌ **Message empty nahi ho sakta.**\n"
-                "Use: `!say Hello`",
-                delete_after=5
-            )
-
-        text = text.strip()
-
-        # ====================================================
-        # SEND AS BOT
-        # ====================================================
-
-        try:
-
-            await ctx.send(
-                text,
-                allowed_mentions=discord.AllowedMentions.none()
-            )
-
-            # ONLY PREFIX COMMAND DELETE
-            #
-            # Bot ka actual sent message delete nahi hoga.
 
             if ctx.message:
 
@@ -957,9 +1042,25 @@ class Security(commands.Cog):
 
                     pass
 
-            print(
-                f"[SECURITY] ✅ !say used by "
-                f"{ctx.author} ({ctx.author.id})"
+            await ctx.send(
+                "❌ **Message empty nahi ho sakta.**\n"
+                "Use: `!say Hello`",
+                delete_after=5
+            )
+
+            return
+
+        text = text.strip()
+
+        # ----------------------------------------------------
+        # SEND AS BOT
+        # ----------------------------------------------------
+
+        try:
+
+            await ctx.send(
+                text,
+                allowed_mentions=discord.AllowedMentions.none()
             )
 
         except discord.Forbidden:
@@ -967,13 +1068,15 @@ class Security(commands.Cog):
             try:
 
                 await ctx.send(
-                    "❌ **Mujhe message send/delete karne ki permission nahi hai.**",
+                    "❌ **Mujhe message send karne ki permission nahi hai.**",
                     delete_after=5
                 )
 
             except Exception:
 
                 pass
+
+            return
 
         except discord.HTTPException as e:
 
@@ -982,16 +1085,7 @@ class Security(commands.Cog):
                 repr(e)
             )
 
-            try:
-
-                await ctx.send(
-                    "❌ **Message send nahi ho paya.**",
-                    delete_after=5
-                )
-
-            except Exception:
-
-                pass
+            return
 
         except Exception as e:
 
@@ -1000,12 +1094,17 @@ class Security(commands.Cog):
                 repr(e)
             )
 
+            return
+
+        # ----------------------------------------------------
+        # DELETE ORIGINAL COMMAND
+        # ----------------------------------------------------
+
+        if ctx.message:
+
             try:
 
-                await ctx.send(
-                    "❌ **Say command mein error aa gaya.**",
-                    delete_after=5
-                )
+                await ctx.message.delete()
 
             except Exception:
 
@@ -1028,8 +1127,6 @@ class Security(commands.Cog):
         action: str = "toggle"
     ):
 
-        # OWNER ONLY
-
         if not await self.is_owner(
             ctx.author
         ):
@@ -1047,8 +1144,6 @@ class Security(commands.Cog):
             "whitelist_music",
             []
         )
-
-        # NORMALIZE IDS
 
         normalized_users = []
 
@@ -1075,7 +1170,9 @@ class Security(commands.Cog):
 
         users = settings["whitelist_music"]
 
-        # SHOW LIST
+        # ----------------------------------------------------
+        # SHOW
+        # ----------------------------------------------------
 
         if member is None:
 
@@ -1149,7 +1246,9 @@ class Security(commands.Cog):
                 embed=embed
             )
 
-        # ACTION NORMALIZATION
+        # ----------------------------------------------------
+        # ACTION
+        # ----------------------------------------------------
 
         action = str(
             action
@@ -1277,6 +1376,380 @@ class Security(commands.Cog):
 
 
     # ========================================================
+    # WHITELIST BOT
+    # ========================================================
+    #
+    # /whitelistbot
+    # /whitelistbot BOT_ID
+    # /whitelistbot BOT_ID remove
+    #
+    # ONLY:
+    # - Server Owner
+    # - Bot Owner
+    # - Owner Role ID
+    # ========================================================
+
+    @commands.hybrid_command(
+        name="whitelistbot",
+        description="Whitelist a bot before inviting it"
+    )
+    @commands.guild_only()
+    async def whitelistbot(
+        self,
+        ctx,
+        bot_id: str = None,
+        action: str = "add"
+    ):
+
+        # ----------------------------------------------------
+        # PERMISSION
+        # ----------------------------------------------------
+
+        if not await self.has_whitelistbot_access(
+            ctx.author
+        ):
+
+            # Prefix command ko immediately delete
+            if ctx.message:
+
+                try:
+
+                    await ctx.message.delete()
+
+                except Exception:
+
+                    pass
+
+            return await ctx.send(
+                "❌ **Only the Server Owner, Bot Owner, "
+                "or a member with the configured Owner role "
+                "can use `/whitelistbot`.**",
+                delete_after=5
+            )
+
+        # ----------------------------------------------------
+        # SETTINGS
+        # ----------------------------------------------------
+
+        settings = self.get_settings(
+            ctx.guild.id
+        )
+
+        bots = settings.setdefault(
+            "whitelist_bots",
+            []
+        )
+
+        # ----------------------------------------------------
+        # NORMALIZE
+        # ----------------------------------------------------
+
+        normalized = []
+
+        for value in bots:
+
+            try:
+
+                normalized.append(
+                    int(value)
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                pass
+
+        bots = list(
+            dict.fromkeys(
+                normalized
+            )
+        )
+
+        settings["whitelist_bots"] = bots
+
+        # ----------------------------------------------------
+        # SHOW LIST
+        # ----------------------------------------------------
+
+        if bot_id is None:
+
+            if not bots:
+
+                embed = discord.Embed(
+                    title="🤖 HSL-CORP BOT WHITELIST",
+                    description=(
+                        "No bots are currently whitelisted."
+                    ),
+                    color=discord.Color.orange()
+                )
+
+                embed.set_footer(
+                    text="Whitelist a bot before inviting it."
+                )
+
+                return await ctx.send(
+                    embed=embed
+                )
+
+            lines = []
+
+            for index, bot_user_id in enumerate(
+                bots,
+                start=1
+            ):
+
+                bot_member = ctx.guild.get_member(
+                    bot_user_id
+                )
+
+                if bot_member:
+
+                    lines.append(
+                        f"**{index}.** "
+                        f"{bot_member.mention} "
+                        f"`{bot_user_id}`"
+                    )
+
+                else:
+
+                    try:
+
+                        bot_user = await self.bot.fetch_user(
+                            bot_user_id
+                        )
+
+                        lines.append(
+                            f"**{index}.** "
+                            f"🤖 {bot_user} "
+                            f"`{bot_user_id}`"
+                        )
+
+                    except Exception:
+
+                        lines.append(
+                            f"**{index}.** "
+                            f"🤖 Unknown Bot "
+                            f"`{bot_user_id}`"
+                        )
+
+            embed = discord.Embed(
+                title="🤖 HSL-CORP BOT WHITELIST",
+                description="\n".join(lines),
+                color=discord.Color.green()
+            )
+
+            embed.add_field(
+                name="Usage",
+                value=(
+                    "`/whitelistbot BOT_ID` → Add\n"
+                    "`/whitelistbot BOT_ID remove` → Remove\n"
+                    "`/whitelistbot` → List"
+                ),
+                inline=False
+            )
+
+            embed.set_footer(
+                text="Server Owner • Bot Owner • Owner Role"
+            )
+
+            return await ctx.send(
+                embed=embed
+            )
+
+        # ----------------------------------------------------
+        # VALIDATE ID
+        # ----------------------------------------------------
+
+        bot_id = str(
+            bot_id
+        ).strip()
+
+        try:
+
+            bot_id_int = int(
+                bot_id
+            )
+
+        except (
+            TypeError,
+            ValueError
+        ):
+
+            return await ctx.send(
+                "❌ **Invalid Bot ID.**\n"
+                "Example: `/whitelistbot 123456789012345678`",
+                delete_after=6
+            )
+
+        if bot_id_int <= 0:
+
+            return await ctx.send(
+                "❌ **Invalid Bot ID.**",
+                delete_after=5
+            )
+
+        # ----------------------------------------------------
+        # ACTION
+        # ----------------------------------------------------
+
+        action = str(
+            action
+        ).lower().strip()
+
+        # ----------------------------------------------------
+        # REMOVE
+        # ----------------------------------------------------
+
+        if action in (
+            "remove",
+            "delete",
+            "del",
+            "off",
+            "disable"
+        ):
+
+            if bot_id_int not in bots:
+
+                return await ctx.send(
+                    f"🟡 Bot `{bot_id_int}` "
+                    "**whitelist mein nahi hai.**",
+                    delete_after=5
+                )
+
+            bots.remove(
+                bot_id_int
+            )
+
+            settings["whitelist_bots"] = bots
+
+            save_data(
+                self.data
+            )
+
+            return await ctx.send(
+                f"🔴 Bot `{bot_id_int}` "
+                "**whitelist se remove ho gaya.**",
+                delete_after=6
+            )
+
+        # ----------------------------------------------------
+        # INVALID ACTION
+        # ----------------------------------------------------
+
+        if action not in (
+            "add",
+            "on",
+            "enable",
+            "whitelist"
+        ):
+
+            return await ctx.send(
+                "❌ Invalid action.\n\n"
+                "**Use:**\n"
+                "`/whitelistbot BOT_ID`\n"
+                "`/whitelistbot BOT_ID remove`",
+                delete_after=7
+            )
+
+        # ----------------------------------------------------
+        # ALREADY EXISTS
+        # ----------------------------------------------------
+
+        if bot_id_int in bots:
+
+            return await ctx.send(
+                f"🟢 Bot `{bot_id_int}` "
+                "**already whitelisted hai.**",
+                delete_after=5
+            )
+
+        # ----------------------------------------------------
+        # ADD
+        # ----------------------------------------------------
+
+        bots.append(
+            bot_id_int
+        )
+
+        settings["whitelist_bots"] = list(
+            dict.fromkeys(
+                bots
+            )
+        )
+
+        save_data(
+            self.data
+        )
+
+        # ----------------------------------------------------
+        # FETCH BOT
+        # ----------------------------------------------------
+
+        bot_name = None
+
+        try:
+
+            user = await self.bot.fetch_user(
+                bot_id_int
+            )
+
+            if user.bot:
+
+                bot_name = str(
+                    user
+                )
+
+            else:
+
+                return await ctx.send(
+                    f"⚠️ `{bot_id_int}` ek bot account nahi lag raha.",
+                    delete_after=6
+                )
+
+        except Exception:
+
+            pass
+
+        # ----------------------------------------------------
+        # SUCCESS
+        # ----------------------------------------------------
+
+        if bot_name:
+
+            description = (
+                f"🤖 **{bot_name}**\n"
+                f"ID: `{bot_id_int}`\n\n"
+                "✅ **Bot successfully whitelisted.**\n"
+                "Ab tum is bot ko server mein invite kar sakte ho."
+            )
+
+        else:
+
+            description = (
+                f"🤖 Bot ID: `{bot_id_int}`\n\n"
+                "✅ **Bot successfully whitelisted.**\n"
+                "Ab tum is bot ko server mein invite kar sakte ho."
+            )
+
+        embed = discord.Embed(
+            title="🛡️ BOT WHITELISTED",
+            description=description,
+            color=discord.Color.green()
+        )
+
+        embed.set_footer(
+            text="HSL-CORP • Anti-Bot"
+        )
+
+        await ctx.send(
+            embed=embed,
+            delete_after=10
+        )
+
+
+    # ========================================================
     # GIVE ROLE
     # ========================================================
 
@@ -1373,6 +1846,10 @@ class Security(commands.Cog):
             guild.id
         )
 
+        # ----------------------------------------------------
+        # ANTI-BOT OFF
+        # ----------------------------------------------------
+
         if not settings.get(
             "antibot",
             True
@@ -1384,6 +1861,65 @@ class Security(commands.Cog):
             )
 
             return
+
+        # ----------------------------------------------------
+        # WHITELISTED BOT
+        # ----------------------------------------------------
+
+        whitelisted_bots = settings.get(
+            "whitelist_bots",
+            []
+        )
+
+        normalized_whitelist = []
+
+        for bot_id in whitelisted_bots:
+
+            try:
+
+                normalized_whitelist.append(
+                    int(bot_id)
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                pass
+
+        if member.id in normalized_whitelist:
+
+            print(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            )
+
+            print(
+                "🤖 HSL-CORP ANTI-BOT"
+            )
+
+            print(
+                f"🤖 Bot: {member} "
+                f"({member.id})"
+            )
+
+            print(
+                "🟢 BOT IS WHITELISTED"
+            )
+
+            print(
+                "✅ BOT ALLOWED"
+            )
+
+            print(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            )
+
+            return
+
+        # ----------------------------------------------------
+        # DETECT
+        # ----------------------------------------------------
 
         print(
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -1399,6 +1935,10 @@ class Security(commands.Cog):
         )
 
         inviter = None
+
+        # ----------------------------------------------------
+        # FIND INVITER
+        # ----------------------------------------------------
 
         for attempt in range(12):
 
@@ -1471,7 +2011,9 @@ class Security(commands.Cog):
                     repr(e)
                 )
 
-        # INVITER UNKNOWN
+        # ----------------------------------------------------
+        # UNKNOWN INVITER
+        # ----------------------------------------------------
 
         if inviter is None:
 
@@ -1494,9 +2036,9 @@ class Security(commands.Cog):
 
             return
 
-        # ====================================================
-        # ONLY SERVER OWNER CAN ADD BOTS
-        # ====================================================
+        # ----------------------------------------------------
+        # ONLY SERVER OWNER ALLOWED
+        # ----------------------------------------------------
 
         if inviter.id == guild.owner_id:
 
@@ -1515,9 +2057,9 @@ class Security(commands.Cog):
 
             return
 
-        # ====================================================
+        # ----------------------------------------------------
         # UNAUTHORIZED BOT
-        # ====================================================
+        # ----------------------------------------------------
 
         print(
             "🚨🚨🚨 UNAUTHORIZED BOT ADDITION 🚨🚨🚨"
@@ -1572,13 +2114,9 @@ class Security(commands.Cog):
                     repr(e)
                 )
 
-        # KICK BOT
-
         await self.kick_unauthorized_bot(
             member
         )
-
-        # REMOVE INVITER ROLES
 
         if inviter_member:
 
@@ -1653,7 +2191,7 @@ class Security(commands.Cog):
             await member.kick(
                 reason=(
                     "HSL-CORP Security - "
-                    "Only server owner can add bots"
+                    "Bot is not whitelisted"
                 )
             )
 
@@ -1701,8 +2239,6 @@ class Security(commands.Cog):
             return
 
         guild = member.guild
-
-        # SERVER OWNER PROTECTED
 
         if member.id == guild.owner_id:
 
@@ -1907,12 +2443,82 @@ class Security(commands.Cog):
         message: discord.Message
     ):
 
+        # ====================================================
+        # INSTANT !SAY PROTECTION
+        # ====================================================
+        #
+        # Unauthorized !say ko duplicate/antilink checks
+        # se pehle delete karta hai.
+        #
+        # Isse !say unnecessarily late visible nahi rahega.
+        # ====================================================
+
+        if (
+            message.guild
+            and not message.author.bot
+        ):
+
+            content = (
+                message.content
+                or ""
+            ).strip()
+
+            if content:
+
+                parts = content.split(
+                    maxsplit=1
+                )
+
+                if (
+                    parts
+                    and parts[0].lower() == "!say"
+                ):
+
+                    allowed = await self.is_owner(
+                        message.author
+                    )
+
+                    if not allowed:
+
+                        try:
+
+                            await message.delete()
+
+                            print(
+                                f"[SECURITY] 🚫 Unauthorized !say "
+                                f"deleted: {message.author} "
+                                f"({message.author.id})"
+                            )
+
+                        except discord.NotFound:
+
+                            pass
+
+                        except discord.Forbidden:
+
+                            print(
+                                "[SECURITY] ❌ Cannot delete unauthorized !say"
+                            )
+
+                        except discord.HTTPException as e:
+
+                            print(
+                                "[SECURITY] ❌ !say delete error:",
+                                repr(e)
+                            )
+
+                        return
+
+        # ====================================================
         # IGNORE BOTS
+        # ====================================================
 
         if message.author.bot:
             return
 
-        # IGNORE DMs
+        # ====================================================
+        # IGNORE DMS
+        # ====================================================
 
         if not message.guild:
             return
@@ -1953,6 +2559,7 @@ class Security(commands.Cog):
                     await message.delete()
 
                 except Exception:
+
                     pass
 
                 try:
@@ -1969,6 +2576,7 @@ class Security(commands.Cog):
                     await warning.delete()
 
                 except Exception:
+
                     pass
 
                 return
@@ -2030,6 +2638,25 @@ class Security(commands.Cog):
 
                     return
 
+                # DISCORD.PY OWNER
+
+                try:
+
+                    if await self.bot.is_owner(
+                        message.author
+                    ):
+
+                        print(
+                            f"[SECURITY] 👑 Discord.py owner "
+                            f"link allowed: {message.author}"
+                        )
+
+                        return
+
+                except Exception:
+
+                    pass
+
                 # MUSIC COMMAND
 
                 is_music = self.is_music_command(
@@ -2063,7 +2690,7 @@ class Security(commands.Cog):
 
                         return
 
-                # DELETE UNAUTHORIZED LINK
+                # DELETE LINK
 
                 try:
 
@@ -2140,6 +2767,7 @@ class Security(commands.Cog):
                     await warning.delete()
 
                 except Exception:
+
                     pass
 
                 return
@@ -2187,12 +2815,18 @@ class Security(commands.Cog):
         )
 
         print(
-            "👑 STRICT ANTI-BOT: SERVER OWNER ONLY"
+            "👑 STRICT ANTI-BOT: "
+            "SERVER OWNER / WHITELISTED BOTS"
         )
 
         print(
             f"🤖 Manual Bot Owners: "
             f"{len(BOT_OWNER_IDS)}"
+        )
+
+        print(
+            f"🎭 Owner Role IDs: "
+            f"{len(OWNER_ROLE_IDS)}"
         )
 
         print(
@@ -2225,6 +2859,10 @@ class Security(commands.Cog):
 
         print(
             "🎵 Music Whitelist"
+        )
+
+        print(
+            "🤖 Bot Whitelist"
         )
 
         print(
