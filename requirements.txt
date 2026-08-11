@@ -1,6 +1,6 @@
 discord.py[voice]
 python-dotenv
+PyNaCl
 yt-dlp
-pynacl
 davey
 ffmpeg-python

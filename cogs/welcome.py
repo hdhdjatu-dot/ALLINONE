@@ -1,12 +1,10 @@
-
 import sqlite3
 import discord
 from discord.ext import commands
 
 
 # ============================================================
-# HSL WELCOME SYSTEM
-# PER-SERVER SETTINGS
+# HSL ULTRA BRUTAL WELCOME SYSTEM (PER-SERVER)
 # ============================================================
 
 class Welcome(commands.Cog):
@@ -25,17 +23,12 @@ class Welcome(commands.Cog):
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS welcome_settings (
                 guild_id INTEGER PRIMARY KEY,
-
                 welcome_channel_id INTEGER,
                 goodbye_channel_id INTEGER,
-
                 auto_role_id INTEGER,
-
                 banner_gif TEXT,
-
                 welcome_message TEXT,
                 goodbye_message TEXT,
-
                 enabled INTEGER DEFAULT 1
             )
         """)
@@ -49,20 +42,25 @@ class Welcome(commands.Cog):
             "iBILBPeCHDVuELjOND/giphy.gif"
         )
 
+        # Ultra Brutal Default Welcome Format
         self.default_welcome = (
-            "Welcome {user}!\n\n"
-            "🎉 We're glad to have you join our community.\n\n"
-            "💬 Join the conversations\n"
-            "🎮 Enjoy your stay\n"
-            "🎁 Participate in events\n\n"
-            "👥 Member #{count}\n\n"
-            "🔥 Together We Rise."
+            "🩸 **A NEW WARRIOR HAS ENTERED THE ARENA**\n\n"
+            "⚔️ **Target Identified:** {user}\n"
+            "🪪 **Identity:** `{username}`\n\n"
+            "🗡️ **SERVER PROTOCOLS**\n"
+            "┣ 💬 Engage in main communication\n"
+            "┣ ⚔️ Respect the local hierarchy\n"
+            "┗ 🩸 Dominance is mandatory\n\n"
+            "👥 **TOTAL FORCE:** `# {count}`\n\n"
+            "🔥 **TOGETHER WE RISE. DOMINATE OR DIE.**"
         )
 
+        # Ultra Brutal Default Goodbye Format
         self.default_goodbye = (
-            "**{username}** has left the server.\n\n"
-            "👥 Members Remaining: {count}\n\n"
-            "🔥 Once HSL, Always HSL."
+            "☠️ **WARRIOR FALLEN**\n\n"
+            "🩸 **{username}** has deserted the battlefield.\n\n"
+            "👥 **Remaining Force:** `# {count}`\n\n"
+            "🔥 **ONCE HSL, ALWAYS HSL.**"
         )
 
     # ========================================================
@@ -90,7 +88,6 @@ class Welcome(commands.Cog):
         row = self.cursor.fetchone()
 
         if row:
-
             return {
                 "welcome_channel_id": row[0],
                 "goodbye_channel_id": row[1],
@@ -144,12 +141,7 @@ class Welcome(commands.Cog):
     # UPDATE SETTING
     # ========================================================
 
-    def update_setting(
-        self,
-        guild_id,
-        column,
-        value
-    ):
+    def update_setting(self, guild_id, column, value):
 
         allowed = {
             "welcome_channel_id",
@@ -181,21 +173,14 @@ class Welcome(commands.Cog):
     # FORMAT MESSAGE
     # ========================================================
 
-    def format_message(
-        self,
-        message,
-        member
-    ):
+    def format_message(self, message, member):
 
         return (
             message
             .replace("{user}", member.mention)
             .replace("{username}", member.name)
             .replace("{server}", member.guild.name)
-            .replace(
-                "{count}",
-                str(member.guild.member_count)
-            )
+            .replace("{count}", str(member.guild.member_count))
         )
 
     # ========================================================
@@ -204,748 +189,265 @@ class Welcome(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-
-        print("✅ Per-server Welcome System loaded")
+        print("✅ Ultra Brutal Per-server Welcome System Loaded")
 
     # ========================================================
     # MEMBER JOIN
     # ========================================================
 
     @commands.Cog.listener()
-    async def on_member_join(
-        self,
-        member: discord.Member
-    ):
+    async def on_member_join(self, member: discord.Member):
 
-        settings = self.get_settings(
-            member.guild.id
-        )
+        settings = self.get_settings(member.guild.id)
 
-        # ====================================================
-        # AUTO ROLE
-        # ====================================================
-
+        # Auto Role
         role_id = settings["auto_role_id"]
-
         if role_id:
-
-            role = member.guild.get_role(
-                role_id
-            )
-
+            role = member.guild.get_role(role_id)
             if role:
-
                 try:
-
-                    await member.add_roles(
-                        role,
-                        reason="HSL Welcome System - Auto Role"
-                    )
-
-                    print(
-                        f"✅ Auto role given to {member}"
-                    )
-
+                    await member.add_roles(role, reason="HSL System - Auto Role")
+                    print(f"✅ Auto role given to {member}")
                 except Exception as e:
-
-                    print(
-                        f"❌ Auto Role Error: {e}"
-                    )
-
-        # ====================================================
-        # WELCOME ENABLED?
-        # ====================================================
+                    print(f"❌ Auto Role Error: {e}")
 
         if not settings["enabled"]:
             return
 
-        # ====================================================
-        # CHANNEL
-        # ====================================================
-
-        channel_id = settings[
-            "welcome_channel_id"
-        ]
-
+        channel_id = settings["welcome_channel_id"]
         if not channel_id:
-
-            print(
-                f"⚠️ Welcome channel not configured "
-                f"for {member.guild.name}"
-            )
-
+            print(f"⚠️ Welcome channel not configured for {member.guild.name}")
             return
 
-        channel = member.guild.get_channel(
-            channel_id
-        )
-
+        channel = member.guild.get_channel(channel_id)
         if not channel:
-
-            print(
-                "❌ Welcome channel not found."
-            )
-
+            print("❌ Welcome channel not found.")
             return
 
-        # ====================================================
-        # MESSAGE
-        # ====================================================
+        # Format Message
+        message = self.format_message(settings["welcome_message"], member)
 
-        message = self.format_message(
-            settings["welcome_message"],
-            member
-        )
-
-        # ====================================================
-        # EMBED
-        # ====================================================
-
+        # Ultra Brutal Crimson Embed
         embed = discord.Embed(
-
-            title=(
-                f"👑 Welcome to "
-                f"{member.guild.name}"
-            ),
-
+            title=f"⚡ SYSTEM OVERRIDE // {member.guild.name.upper()}",
             description=message,
-
-            color=0x8A2BE2
+            color=0xFF003C # Ultra Crimson Red
         )
 
-        # Avatar
-        embed.set_thumbnail(
-            url=member.display_avatar.url
-        )
+        server_icon = member.guild.icon.url if member.guild.icon else self.default_gif
+        embed.set_author(name="☠️ NEW ENTRY DETECTED", icon_url=server_icon)
+        embed.set_thumbnail(url=member.display_avatar.url)
 
-        # Server GIF
         if settings["banner_gif"]:
-
-            embed.set_image(
-                url=settings["banner_gif"]
-            )
+            embed.set_image(url=settings["banner_gif"])
 
         embed.set_footer(
-            text=(
-                f"{member.guild.name} • "
-                "Official Community"
-            )
+            text=f"🔥 {member.guild.name.upper()} • OFFICIAL DOMAIN",
+            icon_url=server_icon
         )
 
-        # ====================================================
-        # SEND
-        # ====================================================
-
         try:
-
             await channel.send(
-                content=f"🎉 Welcome {member.mention}!",
+                content=f"🚨 **ATTENTION ALL UNITS** 🚨 {member.mention}",
                 embed=embed
             )
-
-            print(
-                f"👋 Welcome sent for {member} "
-                f"in {member.guild.name}"
-            )
-
+            print(f"👋 Welcome sent for {member} in {member.guild.name}")
         except Exception as e:
-
-            print(
-                f"❌ Welcome send error: {e}"
-            )
+            print(f"❌ Welcome send error: {e}")
 
     # ========================================================
     # MEMBER LEAVE
     # ========================================================
 
     @commands.Cog.listener()
-    async def on_member_remove(
-        self,
-        member: discord.Member
-    ):
+    async def on_member_remove(self, member: discord.Member):
 
-        settings = self.get_settings(
-            member.guild.id
-        )
+        settings = self.get_settings(member.guild.id)
 
         if not settings["enabled"]:
             return
 
-        # ====================================================
-        # GOODBYE CHANNEL
-        # ====================================================
-
-        channel_id = settings[
-            "goodbye_channel_id"
-        ]
-
-        # If goodbye channel isn't configured,
-        # use welcome channel.
-
+        channel_id = settings["goodbye_channel_id"] or settings["welcome_channel_id"]
         if not channel_id:
-
-            channel_id = settings[
-                "welcome_channel_id"
-            ]
-
-        if not channel_id:
-
             return
 
-        channel = member.guild.get_channel(
-            channel_id
-        )
-
+        channel = member.guild.get_channel(channel_id)
         if not channel:
             return
 
-        # ====================================================
-        # MESSAGE
-        # ====================================================
-
-        message = self.format_message(
-            settings["goodbye_message"],
-            member
-        )
-
-        # ====================================================
-        # EMBED
-        # ====================================================
+        message = self.format_message(settings["goodbye_message"], member)
 
         embed = discord.Embed(
-
-            title="👋 Goodbye",
-
+            title=f"☠️ DESERTION REPORT // {member.guild.name.upper()}",
             description=message,
-
-            color=0xFF5555
+            color=0x2B2D31 # Dark Charcoal Black
         )
 
-        embed.set_thumbnail(
-            url=member.display_avatar.url
-        )
+        server_icon = member.guild.icon.url if member.guild.icon else self.default_gif
+        embed.set_author(name="🩸 MEMBER DEPARTED", icon_url=server_icon)
+        embed.set_thumbnail(url=member.display_avatar.url)
 
         if settings["banner_gif"]:
-
-            embed.set_image(
-                url=settings["banner_gif"]
-            )
+            embed.set_image(url=settings["banner_gif"])
 
         embed.set_footer(
-            text=(
-                f"{member.guild.name} • "
-                "HSL & CORPORATION"
-            )
+            text=f"🔥 {member.guild.name.upper()} • HSL SYSTEM",
+            icon_url=server_icon
         )
 
         try:
-
-            await channel.send(
-                embed=embed
-            )
-
-            print(
-                f"👋 Goodbye sent for {member}"
-            )
-
+            await channel.send(embed=embed)
+            print(f"👋 Goodbye sent for {member}")
         except Exception as e:
-
-            print(
-                f"❌ Goodbye error: {e}"
-            )
+            print(f"❌ Goodbye error: {e}")
 
     # ========================================================
-    # SET WELCOME CHANNEL
+    # HYBRID COMMANDS
     # ========================================================
 
-    @commands.hybrid_command(
-        name="welcomechannel",
-        description="Set the welcome channel"
-    )
-    @commands.has_permissions(
-        administrator=True
-    )
-    async def welcomechannel(
-        self,
-        ctx,
-        channel: discord.TextChannel
-    ):
+    @commands.hybrid_command(name="welcomechannel", description="Set the welcome channel")
+    @commands.has_permissions(administrator=True)
+    async def welcomechannel(self, ctx, channel: discord.TextChannel):
+        self.update_setting(ctx.guild.id, "welcome_channel_id", channel.id)
+        await ctx.send(f"⚔️ **Welcome channel set to** {channel.mention}.", delete_after=5)
 
-        self.update_setting(
-            ctx.guild.id,
-            "welcome_channel_id",
-            channel.id
-        )
+    @commands.hybrid_command(name="goodbyechannel", description="Set the goodbye channel")
+    @commands.has_permissions(administrator=True)
+    async def goodbyechannel(self, ctx, channel: discord.TextChannel):
+        self.update_setting(ctx.guild.id, "goodbye_channel_id", channel.id)
+        await ctx.send(f"⚔️ **Goodbye channel set to** {channel.mention}.", delete_after=5)
 
-        await ctx.send(
-            f"✅ Welcome channel set to {channel.mention}.",
-            delete_after=5
-        )
+    @commands.hybrid_command(name="welcomerole", description="Set the automatic role")
+    @commands.has_permissions(administrator=True)
+    async def welcomerole(self, ctx, role: discord.Role):
+        self.update_setting(ctx.guild.id, "auto_role_id", role.id)
+        await ctx.send(f"⚔️ **Auto role assigned to** {role.mention}.", delete_after=5)
 
-    # ========================================================
-    # SET GOODBYE CHANNEL
-    # ========================================================
+    @commands.hybrid_command(name="welcomeroleremove", description="Disable automatic role")
+    @commands.has_permissions(administrator=True)
+    async def welcomeroleremove(self, ctx):
+        self.update_setting(ctx.guild.id, "auto_role_id", None)
+        await ctx.send("❌ **Auto role purged.**", delete_after=5)
 
-    @commands.hybrid_command(
-        name="goodbyechannel",
-        description="Set the goodbye channel"
-    )
-    @commands.has_permissions(
-        administrator=True
-    )
-    async def goodbyechannel(
-        self,
-        ctx,
-        channel: discord.TextChannel
-    ):
+    @commands.hybrid_command(name="welcomegif", description="Set the welcome GIF")
+    @commands.has_permissions(administrator=True)
+    async def welcomegif(self, ctx, url: str):
+        if not (url.startswith("http://") or url.startswith("https://")):
+            return await ctx.send("❌ Provide a valid HTTP/HTTPS GIF URL.", delete_after=5)
+        self.update_setting(ctx.guild.id, "banner_gif", url)
+        await ctx.send("⚔️ **Banner GIF updated.**", delete_after=5)
 
-        self.update_setting(
-            ctx.guild.id,
-            "goodbye_channel_id",
-            channel.id
-        )
+    @commands.hybrid_command(name="welcomegifreset", description="Reset the welcome GIF")
+    @commands.has_permissions(administrator=True)
+    async def welcomegifreset(self, ctx):
+        self.update_setting(ctx.guild.id, "banner_gif", self.default_gif)
+        await ctx.send("⚔️ **Banner GIF restored to default.**", delete_after=5)
 
-        await ctx.send(
-            f"✅ Goodbye channel set to {channel.mention}.",
-            delete_after=5
-        )
+    @commands.hybrid_command(name="welcomemessage", description="Set custom welcome message")
+    @commands.has_permissions(administrator=True)
+    async def welcomemessage(self, ctx, *, message: str):
+        self.update_setting(ctx.guild.id, "welcome_message", message)
+        await ctx.send("⚔️ **Welcome message override complete.**", delete_after=5)
 
-    # ========================================================
-    # SET AUTO ROLE
-    # ========================================================
+    @commands.hybrid_command(name="goodbyemessage", description="Set custom goodbye message")
+    @commands.has_permissions(administrator=True)
+    async def goodbyemessage(self, ctx, *, message: str):
+        self.update_setting(ctx.guild.id, "goodbye_message", message)
+        await ctx.send("⚔️ **Goodbye message override complete.**", delete_after=5)
 
-    @commands.hybrid_command(
-        name="welcomerole",
-        description="Set the automatic role"
-    )
-    @commands.has_permissions(
-        administrator=True
-    )
-    async def welcomerole(
-        self,
-        ctx,
-        role: discord.Role
-    ):
+    @commands.hybrid_command(name="welcomeenable", description="Enable welcome system")
+    @commands.has_permissions(administrator=True)
+    async def welcomeenable(self, ctx):
+        self.update_setting(ctx.guild.id, "enabled", 1)
+        await ctx.send("🟢 **SYSTEM ENGAGED: Welcome active**", delete_after=5)
 
-        self.update_setting(
-            ctx.guild.id,
-            "auto_role_id",
-            role.id
-        )
+    @commands.hybrid_command(name="welcomedisable", description="Disable welcome system")
+    @commands.has_permissions(administrator=True)
+    async def welcomedisable(self, ctx):
+        self.update_setting(ctx.guild.id, "enabled", 0)
+        await ctx.send("🔴 **SYSTEM OFFLINE: Welcome disabled**", delete_after=5)
 
-        await ctx.send(
-            f"✅ Auto role set to {role.mention}.",
-            delete_after=5
-        )
+    @commands.hybrid_command(name="welcomestatus", description="Show welcome system settings")
+    @commands.has_permissions(administrator=True)
+    async def welcomestatus(self, ctx):
+        settings = self.get_settings(ctx.guild.id)
 
-    # ========================================================
-    # REMOVE AUTO ROLE
-    # ========================================================
-
-    @commands.hybrid_command(
-        name="welcomeroleremove",
-        description="Disable automatic role"
-    )
-    @commands.has_permissions(
-        administrator=True
-    )
-    async def welcomeroleremove(
-        self,
-        ctx
-    ):
-
-        self.update_setting(
-            ctx.guild.id,
-            "auto_role_id",
-            None
-        )
-
-        await ctx.send(
-            "✅ Auto role disabled.",
-            delete_after=5
-        )
-
-    # ========================================================
-    # SET GIF
-    # ========================================================
-
-    @commands.hybrid_command(
-        name="welcomegif",
-        description="Set the welcome GIF"
-    )
-    @commands.has_permissions(
-        administrator=True
-    )
-    async def welcomegif(
-        self,
-        ctx,
-        url: str
-    ):
-
-        if not (
-            url.startswith("http://")
-            or url.startswith("https://")
-        ):
-
-            return await ctx.send(
-                "❌ Please provide a valid GIF URL.",
-                delete_after=5
-            )
-
-        self.update_setting(
-            ctx.guild.id,
-            "banner_gif",
-            url
-        )
-
-        await ctx.send(
-            "✅ Welcome GIF updated.",
-            delete_after=5
-        )
-
-    # ========================================================
-    # RESET GIF
-    # ========================================================
-
-    @commands.hybrid_command(
-        name="welcomegifreset",
-        description="Reset the welcome GIF"
-    )
-    @commands.has_permissions(
-        administrator=True
-    )
-    async def welcomegifreset(
-        self,
-        ctx
-    ):
-
-        self.update_setting(
-            ctx.guild.id,
-            "banner_gif",
-            self.default_gif
-        )
-
-        await ctx.send(
-            "✅ Welcome GIF reset to default.",
-            delete_after=5
-        )
-
-    # ========================================================
-    # SET WELCOME MESSAGE
-    # ========================================================
-
-    @commands.hybrid_command(
-        name="welcomemessage",
-        description="Set the welcome message"
-    )
-    @commands.has_permissions(
-        administrator=True
-    )
-    async def welcomemessage(
-        self,
-        ctx,
-        *,
-        message: str
-    ):
-
-        self.update_setting(
-            ctx.guild.id,
-            "welcome_message",
-            message
-        )
-
-        await ctx.send(
-            "✅ Welcome message updated.",
-            delete_after=5
-        )
-
-    # ========================================================
-    # SET GOODBYE MESSAGE
-    # ========================================================
-
-    @commands.hybrid_command(
-        name="goodbyemessage",
-        description="Set the goodbye message"
-    )
-    @commands.has_permissions(
-        administrator=True
-    )
-    async def goodbyemessage(
-        self,
-        ctx,
-        *,
-        message: str
-    ):
-
-        self.update_setting(
-            ctx.guild.id,
-            "goodbye_message",
-            message
-        )
-
-        await ctx.send(
-            "✅ Goodbye message updated.",
-            delete_after=5
-        )
-
-    # ========================================================
-    # ENABLE
-    # ========================================================
-
-    @commands.hybrid_command(
-        name="welcomeenable",
-        description="Enable welcome and goodbye system"
-    )
-    @commands.has_permissions(
-        administrator=True
-    )
-    async def welcomeenable(
-        self,
-        ctx
-    ):
-
-        self.update_setting(
-            ctx.guild.id,
-            "enabled",
-            1
-        )
-
-        await ctx.send(
-            "🟢 **Welcome System Enabled**",
-            delete_after=5
-        )
-
-    # ========================================================
-    # DISABLE
-    # ========================================================
-
-    @commands.hybrid_command(
-        name="welcomedisable",
-        description="Disable welcome and goodbye system"
-    )
-    @commands.has_permissions(
-        administrator=True
-    )
-    async def welcomedisable(
-        self,
-        ctx
-    ):
-
-        self.update_setting(
-            ctx.guild.id,
-            "enabled",
-            0
-        )
-
-        await ctx.send(
-            "🔴 **Welcome System Disabled**",
-            delete_after=5
-        )
-
-    # ========================================================
-    # STATUS
-    # ========================================================
-
-    @commands.hybrid_command(
-        name="welcomestatus",
-        description="Show welcome system settings"
-    )
-    @commands.has_permissions(
-        administrator=True
-    )
-    async def welcomestatus(
-        self,
-        ctx
-    ):
-
-        settings = self.get_settings(
-            ctx.guild.id
-        )
-
-        welcome_channel = (
-            f"<#{settings['welcome_channel_id']}>"
-            if settings["welcome_channel_id"]
-            else "Not set"
-        )
-
-        goodbye_channel = (
-            f"<#{settings['goodbye_channel_id']}>"
-            if settings["goodbye_channel_id"]
-            else "Welcome channel"
-        )
-
-        role = (
-            f"<@&{settings['auto_role_id']}>"
-            if settings["auto_role_id"]
-            else "Disabled"
-        )
+        welcome_channel = f"<#{settings['welcome_channel_id']}>" if settings["welcome_channel_id"] else "`NOT CONFIGURED`"
+        goodbye_channel = f"<#{settings['goodbye_channel_id']}>" if settings["goodbye_channel_id"] else "`WELCOME CHANNEL`"
+        role = f"<@&{settings['auto_role_id']}>" if settings["auto_role_id"] else "`DISABLED`"
 
         embed = discord.Embed(
-            title="⚙️ Welcome System Settings",
-            color=0x8A2BE2
+            title=f"⚡ CONFIGURATION OVERVIEW // {ctx.guild.name.upper()}",
+            color=0xFF003C
         )
+        embed.add_field(name="📢 WELCOME", value=welcome_channel, inline=True)
+        embed.add_field(name="👋 GOODBYE", value=goodbye_channel, inline=True)
+        embed.add_field(name="🎭 AUTO ROLE", value=role, inline=True)
+        embed.add_field(name="🟢 STATUS", value="`ONLINE`" if settings["enabled"] else "`OFFLINE`", inline=True)
+        embed.add_field(name="🎬 GIF STATUS", value="`CUSTOM LOADED`", inline=True)
+        embed.add_field(name="📝 MESSAGE FORMAT", value=f"```yaml\n{settings['welcome_message'][:500]}\n```", inline=False)
 
-        embed.add_field(
-            name="📢 Welcome Channel",
-            value=welcome_channel,
-            inline=True
-        )
+        server_icon = ctx.guild.icon.url if ctx.guild.icon else self.default_gif
+        embed.set_thumbnail(url=server_icon)
 
-        embed.add_field(
-            name="👋 Goodbye Channel",
-            value=goodbye_channel,
-            inline=True
-        )
+        await ctx.send(embed=embed)
 
-        embed.add_field(
-            name="🎭 Auto Role",
-            value=role,
-            inline=True
-        )
-
-        embed.add_field(
-            name="🟢 System",
-            value=(
-                "Enabled"
-                if settings["enabled"]
-                else "Disabled"
-            ),
-            inline=True
-        )
-
-        embed.add_field(
-            name="🎬 GIF",
-            value="Custom GIF configured",
-            inline=True
-        )
-
-        embed.add_field(
-            name="📝 Welcome Message",
-            value=settings["welcome_message"][:1000],
-            inline=False
-        )
-
-        embed.set_thumbnail(
-            url=ctx.guild.icon.url
-            if ctx.guild.icon
-            else self.default_gif
-        )
-
-        await ctx.send(
-            embed=embed
-        )
-
-    # ========================================================
-    # TEST WELCOME
-    # ========================================================
-
-    @commands.hybrid_command(
-        name="testwelcome",
-        description="Test the welcome message"
-    )
-    @commands.has_permissions(
-        administrator=True
-    )
-    async def testwelcome(
-        self,
-        ctx
-    ):
-
-        settings = self.get_settings(
-            ctx.guild.id
-        )
-
+    @commands.hybrid_command(name="testwelcome", description="Test the brutal welcome message")
+    @commands.has_permissions(administrator=True)
+    async def testwelcome(self, ctx):
+        settings = self.get_settings(ctx.guild.id)
         member = ctx.author
-
-        message = self.format_message(
-            settings["welcome_message"],
-            member
-        )
+        message = self.format_message(settings["welcome_message"], member)
 
         embed = discord.Embed(
-            title=(
-                f"👑 Welcome to "
-                f"{ctx.guild.name}"
-            ),
+            title=f"⚡ SYSTEM OVERRIDE // {ctx.guild.name.upper()}",
             description=message,
-            color=0x8A2BE2
+            color=0xFF003C
         )
 
-        embed.set_thumbnail(
-            url=member.display_avatar.url
-        )
+        server_icon = ctx.guild.icon.url if ctx.guild.icon else self.default_gif
+        embed.set_author(name="☠️ NEW ENTRY DETECTED", icon_url=server_icon)
+        embed.set_thumbnail(url=member.display_avatar.url)
 
         if settings["banner_gif"]:
-
-            embed.set_image(
-                url=settings["banner_gif"]
-            )
+            embed.set_image(url=settings["banner_gif"])
 
         embed.set_footer(
-            text=(
-                f"{ctx.guild.name} • "
-                "Official Community"
-            )
+            text=f"🔥 {ctx.guild.name.upper()} • OFFICIAL DOMAIN",
+            icon_url=server_icon
         )
 
         await ctx.send(
-            content=f"🎉 Welcome {member.mention}!",
+            content=f"🚨 **ATTENTION ALL UNITS** 🚨 {member.mention}",
             embed=embed
         )
 
-    # ========================================================
-    # TEST GOODBYE
-    # ========================================================
-
-    @commands.hybrid_command(
-        name="testgoodbye",
-        description="Test the goodbye message"
-    )
-    @commands.has_permissions(
-        administrator=True
-    )
-    async def testgoodbye(
-        self,
-        ctx
-    ):
-
-        settings = self.get_settings(
-            ctx.guild.id
-        )
-
+    @commands.hybrid_command(name="testgoodbye", description="Test the brutal goodbye message")
+    @commands.has_permissions(administrator=True)
+    async def testgoodbye(self, ctx):
+        settings = self.get_settings(ctx.guild.id)
         member = ctx.author
-
-        message = self.format_message(
-            settings["goodbye_message"],
-            member
-        )
+        message = self.format_message(settings["goodbye_message"], member)
 
         embed = discord.Embed(
-            title="👋 Goodbye",
+            title=f"☠️ DESERTION REPORT // {ctx.guild.name.upper()}",
             description=message,
-            color=0xFF5555
+            color=0x2B2D31
         )
 
-        embed.set_thumbnail(
-            url=member.display_avatar.url
-        )
+        server_icon = ctx.guild.icon.url if ctx.guild.icon else self.default_gif
+        embed.set_author(name="🩸 MEMBER DEPARTED", icon_url=server_icon)
+        embed.set_thumbnail(url=member.display_avatar.url)
 
         if settings["banner_gif"]:
-
-            embed.set_image(
-                url=settings["banner_gif"]
-            )
+            embed.set_image(url=settings["banner_gif"])
 
         embed.set_footer(
-            text=(
-                f"{ctx.guild.name} • "
-                "HSL & CORPORATION"
-            )
+            text=f"🔥 {ctx.guild.name.upper()} • HSL SYSTEM",
+            icon_url=server_icon
         )
 
-        await ctx.send(
-            embed=embed
-        )
+        await ctx.send(embed=embed)
 
 
 # ============================================================
@@ -953,8 +455,4 @@ class Welcome(commands.Cog):
 # ============================================================
 
 async def setup(bot):
-
-    await bot.add_cog(
-        Welcome(bot)
-    )
-
+    await bot.add_cog(Welcome(bot))
