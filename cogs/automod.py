@@ -40,7 +40,12 @@ class AutoMod(commands.Cog):
             "mc", "randi", "maderchod", "chakka", "bhenchod",
             "bhosdika", "chutiye", "bsdk", "gand", "gand mara",
             "muh me lele", "teri maa chod dunga", "tun chakka hai",
-            "bc", "bhosdike", "chutiya", "lodu", "bkl"
+            "bc", "bhosdike", "chutiya", "lodu", "bkl" ,"bhen ka loda" "maa ka bhosda" ,"chut"  ,"bhund", "fudda" ,"sex" ,"radn" ,"randdd"
+
+
+
+
+
         }
 
         # Limits
