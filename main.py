@@ -43,7 +43,7 @@ class HSLBot(commands.Bot):
         print("✅ warnings.py loaded")
         
         print("🔄 Loading automod.py...")
-        # await self.load_extension("cogs.automod")
+        await self.load_extension("cogs.automod")
         print("✅ automod.py loaded")
         
         print("🔄 Loading logging.py...")
