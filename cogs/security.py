@@ -17,15 +17,18 @@ DATA_FILE = "security_data.json"
 # ============================================================
 # BOT OWNERS
 # ============================================================
-
-# IMPORTANT:
 #
+# IMPORTANT:
 # Yahan DISCORD USER IDs hone chahiye.
+#
 # Server IDs nahi.
 #
-# Server OWNER ko automatically security bypass milega.
+# Server Owner ko automatically access milega.
 #
-# STRICT ANTI-BOT mein sirf SERVER OWNER bot add kar sakta hai.
+# STRICT ANTI-BOT:
+# Sirf SERVER OWNER bot add kar sakta hai.
+#
+# ============================================================
 
 BOT_OWNER_IDS = {
     1519933809402056805,
@@ -216,7 +219,19 @@ class Security(commands.Cog):
 
 
     # ========================================================
-    # SERVER OWNER / BOT OWNER CHECK
+    # OWNER CHECK
+    # ========================================================
+    #
+    # ONLY:
+    #
+    # 1. SERVER OWNER
+    # 2. BOT OWNER
+    #
+    # Administrator does NOT bypass.
+    # Moderator does NOT bypass.
+    # Manage Messages does NOT bypass.
+    # Manage Roles does NOT bypass.
+    #
     # ========================================================
 
     async def is_owner(
@@ -233,21 +248,18 @@ class Security(commands.Cog):
         # SERVER OWNER
 
         if member.id == member.guild.owner_id:
-
             return True
 
         # MANUAL BOT OWNER
 
         if member.id in BOT_OWNER_IDS:
-
             return True
 
-        # DISCORD.PY OWNER
+        # DISCORD.PY BOT OWNER
 
         try:
 
             if await self.bot.is_owner(member):
-
                 return True
 
         except Exception as e:
@@ -258,6 +270,27 @@ class Security(commands.Cog):
             )
 
         return False
+
+
+    # ========================================================
+    # COMMAND OWNER CHECK
+    # ========================================================
+    #
+    # Used for commands.
+    #
+    # ========================================================
+
+    async def owner_check(
+        self,
+        ctx
+    ):
+
+        if not ctx.guild:
+            return False
+
+        return await self.is_owner(
+            ctx.author
+        )
 
 
     # ========================================================
@@ -276,17 +309,14 @@ class Security(commands.Cog):
             return False
 
         if member.id == member.guild.owner_id:
-
             return True
 
         if member.id in BOT_OWNER_IDS:
-
             return True
 
         try:
 
             if await self.bot.is_owner(member):
-
                 return True
 
         except Exception:
@@ -306,7 +336,6 @@ class Security(commands.Cog):
     ):
 
         if value:
-
             return "🟢 **ON**"
 
         return "🔴 **OFF**"
@@ -363,7 +392,9 @@ class Security(commands.Cog):
             ctx.guild.id
         )
 
+        # ====================================================
         # INTRO
+        # ====================================================
 
         for i in range(10):
 
@@ -419,7 +450,10 @@ class Security(commands.Cog):
                 0.16
             )
 
+
+        # ====================================================
         # EACH SECURITY
+        # ====================================================
 
         completed = []
 
@@ -590,6 +624,7 @@ class Security(commands.Cog):
                 0.45
             )
 
+
         final_text = (
             "SYSTEM ONLINE"
             if enabled
@@ -652,11 +687,8 @@ class Security(commands.Cog):
         )
 
         try:
-
             await message.delete()
-
         except Exception:
-
             pass
 
 
@@ -732,6 +764,17 @@ class Security(commands.Cog):
         ctx
     ):
 
+        # OWNER ONLY
+
+        if not await self.is_owner(
+            ctx.author
+        ):
+
+            return await ctx.send(
+                "❌ **Only the server owner or bot owner can use this.**",
+                delete_after=5
+            )
+
         settings = self.get_settings(
             ctx.guild.id
         )
@@ -794,14 +837,25 @@ class Security(commands.Cog):
         description="Delete messages"
     )
     @commands.guild_only()
-    @commands.has_permissions(
-        manage_messages=True
-    )
     async def clear(
         self,
         ctx,
         amount: int
     ):
+
+        # OWNER ONLY
+        #
+        # NO Manage Messages bypass.
+        #
+
+        if not await self.is_owner(
+            ctx.author
+        ):
+
+            return await ctx.send(
+                "❌ **Only the server owner or bot owner can use this.**",
+                delete_after=5
+            )
 
         if amount < 1 or amount > 100:
 
@@ -830,11 +884,8 @@ class Security(commands.Cog):
             )
 
             try:
-
                 await msg.delete()
-
             except Exception:
-
                 pass
 
         except discord.Forbidden:
@@ -846,18 +897,7 @@ class Security(commands.Cog):
 
 
     # ========================================================
-    # SAY COMMAND
-    # ========================================================
-    #
-    # !say Hello
-    # /say Hello
-    #
-    # Sirf server owner / bot owner.
-    #
-    # IMPORTANT:
-    # Bot ka bheja hua message delete nahi hoga.
-    # Sirf original !say command delete hoga.
-    #
+    # SAY
     # ========================================================
 
     @commands.hybrid_command(
@@ -872,9 +912,7 @@ class Security(commands.Cog):
         text: str
     ):
 
-        # ----------------------------------------------------
         # OWNER ONLY
-        # ----------------------------------------------------
 
         if not await self.is_owner(
             ctx.author
@@ -884,10 +922,6 @@ class Security(commands.Cog):
                 "❌ **Only the server owner or bot owner can use this.**",
                 delete_after=5
             )
-
-        # ----------------------------------------------------
-        # EMPTY MESSAGE
-        # ----------------------------------------------------
 
         if not text or not text.strip():
 
@@ -899,27 +933,22 @@ class Security(commands.Cog):
 
         text = text.strip()
 
-        # ----------------------------------------------------
-        # SEND AS BOT
-        # ----------------------------------------------------
-
         try:
 
-            # BOT MESSAGE PERMANENT RAHEGA
+            # BOT MESSAGE PERMANENT
+
             await ctx.send(
                 text,
                 allowed_mentions=discord.AllowedMentions.none()
             )
 
-            # SIRF ORIGINAL !say COMMAND DELETE HOGA
+            # ORIGINAL COMMAND DELETE
+
             if ctx.message:
 
                 try:
-
                     await ctx.message.delete()
-
                 except Exception:
-
                     pass
 
         except discord.Forbidden:
@@ -932,7 +961,6 @@ class Security(commands.Cog):
                 )
 
             except Exception:
-
                 pass
 
         except discord.HTTPException as e:
@@ -942,34 +970,12 @@ class Security(commands.Cog):
                 repr(e)
             )
 
-            try:
-
-                await ctx.send(
-                    "❌ **Message send nahi ho paya.**",
-                    delete_after=5
-                )
-
-            except Exception:
-
-                pass
-
         except Exception as e:
 
             print(
                 "[SECURITY] SAY ERROR:",
                 repr(e)
             )
-
-            try:
-
-                await ctx.send(
-                    "❌ **Say command mein error aa gaya.**",
-                    delete_after=5
-                )
-
-            except Exception:
-
-                pass
 
 
     # ========================================================
@@ -1035,7 +1041,9 @@ class Security(commands.Cog):
 
         users = settings["whitelist_music"]
 
+        # ====================================================
         # SHOW LIST
+        # ====================================================
 
         if member is None:
 
@@ -1109,7 +1117,9 @@ class Security(commands.Cog):
                 embed=embed
             )
 
+        # ====================================================
         # ACTION NORMALIZATION
+        # ====================================================
 
         action = str(
             action
@@ -1136,7 +1146,9 @@ class Security(commands.Cog):
                 delete_after=8
             )
 
+        # ====================================================
         # REMOVE
+        # ====================================================
 
         if action in (
             "remove",
@@ -1168,7 +1180,9 @@ class Security(commands.Cog):
                 delete_after=6
             )
 
+        # ====================================================
         # ADD
+        # ====================================================
 
         if action in (
             "add",
@@ -1200,7 +1214,9 @@ class Security(commands.Cog):
                 delete_after=8
             )
 
+        # ====================================================
         # TOGGLE
+        # ====================================================
 
         if action == "toggle":
 
@@ -1250,6 +1266,11 @@ class Security(commands.Cog):
         member: discord.Member,
         role: discord.Role
     ):
+
+        # OWNER ONLY
+        #
+        # Manage Roles permission does NOT bypass.
+        #
 
         if not await self.is_owner(
             ctx.author
@@ -1360,6 +1381,10 @@ class Security(commands.Cog):
 
         inviter = None
 
+        # ====================================================
+        # FIND INVITER
+        # ====================================================
+
         for attempt in range(12):
 
             try:
@@ -1431,7 +1456,9 @@ class Security(commands.Cog):
                     repr(e)
                 )
 
+        # ====================================================
         # INVITER UNKNOWN
+        # ====================================================
 
         if inviter is None:
 
@@ -1454,7 +1481,9 @@ class Security(commands.Cog):
 
             return
 
+        # ====================================================
         # ONLY SERVER OWNER ALLOWED
+        # ====================================================
 
         if inviter.id == guild.owner_id:
 
@@ -1473,7 +1502,9 @@ class Security(commands.Cog):
 
             return
 
+        # ====================================================
         # UNAUTHORIZED
+        # ====================================================
 
         print(
             "🚨🚨🚨 UNAUTHORIZED BOT ADDITION 🚨🚨🚨"
@@ -1528,9 +1559,13 @@ class Security(commands.Cog):
                     repr(e)
                 )
 
+        # KICK BOT
+
         await self.kick_unauthorized_bot(
             member
         )
+
+        # REMOVE INVITER ROLES
 
         if inviter_member:
 
@@ -1653,6 +1688,8 @@ class Security(commands.Cog):
             return
 
         guild = member.guild
+
+        # NEVER TOUCH SERVER OWNER
 
         if member.id == guild.owner_id:
 
@@ -1805,7 +1842,6 @@ class Security(commands.Cog):
             try:
 
                 if int(allowed_id) == user_id:
-
                     return True
 
             except (
@@ -1934,6 +1970,7 @@ class Security(commands.Cog):
                 )
             )
 
+
         # ====================================================
         # ANTI-LINK
         # ====================================================
@@ -2032,7 +2069,7 @@ class Security(commands.Cog):
 
                         return
 
-                # DELETE UNAUTHORIZED LINK
+                # DELETE LINK
 
                 try:
 
@@ -2113,22 +2150,6 @@ class Security(commands.Cog):
 
                 return
 
-        # ====================================================
-        # IMPORTANT
-        # ====================================================
-        #
-        # YAHAN process_commands() NAHI HAI.
-        #
-        # Is Cog ke on_message() se command dobara process
-        # nahi hogi.
-        #
-        # discord.py Bot ka normal on_message() commands
-        # ko process karega.
-        #
-        # Isse !say double execute nahi hoga.
-        #
-        # ====================================================
-
 
     # ========================================================
     # CLEAR DUPLICATE CACHE
@@ -2169,6 +2190,10 @@ class Security(commands.Cog):
 
         print(
             "🛡️ HSL-CORP SECURITY ONLINE"
+        )
+
+        print(
+            "👑 COMMAND ACCESS: SERVER OWNER + BOT OWNER"
         )
 
         print(
