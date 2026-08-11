@@ -1,12 +1,13 @@
 import asyncio
-import aiohttp
 import os
 import shutil
 import ctypes
 import ctypes.util
 import random
+import time
 from collections import deque
 
+import aiohttp
 import discord
 from discord.ext import commands
 import yt_dlp
@@ -79,16 +80,9 @@ COOKIE_PATH = os.path.join(
     "cookies.txt"
 )
 
-YOUTUBE_COOKIES = os.getenv(
-    "YOUTUBE_COOKIES"
-)
-
+YOUTUBE_COOKIES = os.getenv("YOUTUBE_COOKIES")
 COOKIE_FILE = None
 
-
-# ---------------------------------------------------------
-# LOCAL COOKIE FILE
-# ---------------------------------------------------------
 
 if os.path.isfile(COOKIE_PATH):
 
@@ -99,10 +93,6 @@ if os.path.isfile(COOKIE_PATH):
         f"{COOKIE_FILE}"
     )
 
-
-# ---------------------------------------------------------
-# ENVIRONMENT COOKIE
-# ---------------------------------------------------------
 
 elif YOUTUBE_COOKIES:
 
@@ -115,7 +105,6 @@ elif YOUTUBE_COOKIES:
             "w",
             encoding="utf-8"
         ) as f:
-
             f.write(YOUTUBE_COOKIES)
 
         print(
@@ -129,6 +118,7 @@ elif YOUTUBE_COOKIES:
             "[MUSIC] ❌ Cookie file error:",
             repr(e)
         )
+
 
 else:
 
@@ -157,11 +147,9 @@ def find_ffmpeg():
     ffmpeg = shutil.which("ffmpeg")
 
     if ffmpeg:
-
         print(
             f"[MUSIC] ✅ FFmpeg found: {ffmpeg}"
         )
-
         return ffmpeg
 
     paths = [
@@ -195,58 +183,35 @@ FFMPEG_PATH = find_ffmpeg()
 # =========================================================
 
 YTDLP_OPTIONS = {
-
     "quiet": True,
-
     "no_warnings": False,
-
     "noplaylist": True,
-
     "source_address": "0.0.0.0",
 
-    # -----------------------------------------------------
-    # DENO
-    # -----------------------------------------------------
-
+    # Deno JS runtime
     "js_runtimes": {
         "deno": {}
     },
 
-    # -----------------------------------------------------
-    # EJS REMOTE COMPONENT
-    # -----------------------------------------------------
-
+    # yt-dlp EJS
     "remote_components": [
         "ejs:github"
     ],
 
-    # -----------------------------------------------------
-    # USER AGENT
-    # -----------------------------------------------------
-
     "http_headers": {
-
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 "
             "(KHTML, like Gecko) "
             "Chrome/151.0.0.0 Safari/537.36"
         )
-
-    }
-
+    },
 }
 
 
-# =========================================================
-# APPLY COOKIES
-# =========================================================
-
 if COOKIE_FILE:
 
-    YTDLP_OPTIONS[
-        "cookiefile"
-    ] = COOKIE_FILE
+    YTDLP_OPTIONS["cookiefile"] = COOKIE_FILE
 
     print(
         "[MUSIC] ✅ YouTube cookie authentication enabled."
@@ -279,15 +244,11 @@ class Song:
 
 class MusicPlayer:
 
-    def __init__(
-        self,
-        bot
-    ):
+    def __init__(self, bot):
 
         self.bot = bot
 
         self.voice = None
-
         self.text_channel = None
 
         self.queue = deque()
@@ -298,7 +259,7 @@ class MusicPlayer:
 
         self.loop = False
 
-        # AUTOPLAY ON
+        # AUTOPLAY ON BY DEFAULT
         self.autoplay = True
 
         self.starting = False
@@ -307,156 +268,140 @@ class MusicPlayer:
 
         self.now_playing_message = None
 
-        # -------------------------------------------------
-        # IMPORTANT:
-        # Prevent multiple !play commands from resolving
-        # simultaneously for the same guild.
-        # -------------------------------------------------
-
-        self.command_lock = asyncio.Lock()
-
-        # -------------------------------------------------
-        # Playback lock
-        # -------------------------------------------------
-
+        # Prevent simultaneous play_next()
         self.play_lock = asyncio.Lock()
 
-        # -------------------------------------------------
-        # Prevent same request from being inserted twice
-        # due to duplicate command dispatch.
-        # -------------------------------------------------
-
-        self.recent_requests = set()
+        # Last play request protection
+        self.last_play_request = None
+        self.last_play_request_time = 0.0
 
 
     # =====================================================
-    # UPDATE DISCORD VC ACTIVITY
+    # VOICE CHANNEL STATUS
     # =====================================================
 
-    async def update_activity(
-        self,
-        song=None
-    ):
+    async def update_voice_status(self, text):
+
+        if not self.voice:
+            return
+
+        if not self.voice.is_connected():
+            return
+
+        if not self.voice.channel:
+            return
+
+        channel_id = self.voice.channel.id
+
+        url = (
+            f"https://discord.com/api/v10/"
+            f"channels/{channel_id}/voice-status"
+        )
+
+        headers = {
+            "Authorization": (
+                f"Bot {self.bot.http.token}"
+            ),
+            "Content-Type": "application/json",
+        }
+
+        # Discord voice status has a limited length.
+        text = str(text)[:500]
 
         try:
 
-            if song:
+            async with aiohttp.ClientSession() as session:
 
-                title = song.title
+                async with session.put(
+                    url,
+                    headers=headers,
+                    json={
+                        "status": text
+                    }
+                ) as response:
 
-                if len(title) > 120:
-                    title = title[:117] + "..."
+                    if response.status in (200, 204):
 
-                await self.bot.change_presence(
+                        print(
+                            "[MUSIC] ✅ VC Status updated:",
+                            text
+                        )
 
-                    status=discord.Status.online,
+                    else:
 
-                    activity=discord.Activity(
+                        error = await response.text()
 
-                        type=discord.ActivityType.listening,
-
-                        name=title
-
-                    )
-
-                )
-
-            else:
-
-                await self.bot.change_presence(
-
-                    status=discord.Status.online,
-
-                    activity=discord.Activity(
-
-                        type=discord.ActivityType.listening,
-
-                        name="HSL-CORP MUSIC"
-
-                    )
-
-                )
+                        print(
+                            "[MUSIC] ❌ VC Status failed "
+                            f"({response.status}): {error}"
+                        )
 
         except Exception as e:
 
             print(
-                "[MUSIC] ⚠️ Activity update failed:",
+                "[MUSIC] ❌ VC STATUS ERROR:",
                 repr(e)
             )
 
 
     # =====================================================
-    # UPDATE DISCORD VOICE CHANNEL STATUS
+    # CLEAR VOICE CHANNEL STATUS
     # =====================================================
 
-    async def update_voice_channel_status(
-        self,
-        song=None
-    ):
+    async def clear_voice_status(self):
+
+        if not self.voice:
+            return
+
+        if not self.voice.channel:
+            return
+
+        channel_id = self.voice.channel.id
+
+        url = (
+            f"https://discord.com/api/v10/"
+            f"channels/{channel_id}/voice-status"
+        )
+
+        headers = {
+            "Authorization": (
+                f"Bot {self.bot.http.token}"
+            ),
+            "Content-Type": "application/json",
+        }
+
         try:
-            if not self.voice:
-                return
-
-            if not self.voice.is_connected():
-                return
-
-            channel = self.voice.channel
-
-            if not channel:
-                return
-
-            if song:
-                title = str(song.title)
-
-                if len(title) > 480:
-                    title = title[:477] + "..."
-
-                status = f"🎵 Playing: {title}"
-            else:
-                status = None
-
-            url = (
-                f"https://discord.com/api/v10"
-                f"/channels/{channel.id}/voice-status"
-            )
-
-            headers = {
-                "Authorization": f"Bot {self.bot.http.token}",
-                "Content-Type": "application/json"
-            }
-
-            payload = {"status": status}
 
             async with aiohttp.ClientSession() as session:
+
                 async with session.put(
                     url,
                     headers=headers,
-                    json=payload
+                    json={
+                        "status": ""
+                    }
                 ) as response:
 
-                    if response.status not in (200, 204):
-                        body = await response.text()
-                        print(
-                            "[MUSIC] ⚠️ VC status failed:",
-                            response.status,
-                            body
-                        )
-                        return
+                    if response.status in (200, 204):
 
-            if song:
-                print(
-                    "[MUSIC] 🎵 VC STATUS:",
-                    status
-                )
-            else:
-                print(
-                    "[MUSIC] 🧹 VC STATUS CLEARED"
-                )
+                        print(
+                            "[MUSIC] 🧹 VC Status cleared."
+                        )
+
+                    else:
+
+                        error = await response.text()
+
+                        print(
+                            "[MUSIC] ⚠️ VC Status clear "
+                            f"failed ({response.status}): "
+                            f"{error}"
+                        )
 
         except Exception as e:
-            # Status failure must never break music playback.
+
             print(
-                "[MUSIC] ⚠️ Voice status error:",
+                "[MUSIC] ❌ VC STATUS CLEAR ERROR:",
                 repr(e)
             )
 
@@ -475,13 +420,9 @@ class MusicPlayer:
 
         def extract():
 
-            options = dict(
-                YTDLP_OPTIONS
-            )
+            options = dict(YTDLP_OPTIONS)
 
-            options[
-                "skip_download"
-            ] = True
+            options["skip_download"] = True
 
             query = str(
                 search_query
@@ -489,10 +430,6 @@ class MusicPlayer:
 
             if not query:
                 return None
-
-            # ------------------------------------------------
-            # DIRECT URL
-            # ------------------------------------------------
 
             if query.startswith(
                 (
@@ -508,10 +445,6 @@ class MusicPlayer:
                     target
                 )
 
-            # ------------------------------------------------
-            # SEARCH
-            # ------------------------------------------------
-
             else:
 
                 target = (
@@ -522,10 +455,6 @@ class MusicPlayer:
                     "[MUSIC] 🔎 Searching:",
                     query
                 )
-
-            # ------------------------------------------------
-            # EXTRACT
-            # ------------------------------------------------
 
             with yt_dlp.YoutubeDL(
                 options
@@ -553,26 +482,18 @@ class MusicPlayer:
                     info = entries[0]
 
                 return {
-
                     "title": info.get(
                         "title",
                         "Unknown Song"
                     ),
-
                     "url": (
-                        info.get(
-                            "webpage_url"
-                        )
-                        or info.get(
-                            "original_url"
-                        )
+                        info.get("webpage_url")
+                        or info.get("original_url")
                         or query
                     ),
-
                     "thumbnail": info.get(
                         "thumbnail"
-                    )
-
+                    ),
                 }
 
         try:
@@ -595,20 +516,15 @@ class MusicPlayer:
             return None
 
         print(
-            f"[MUSIC] ✅ Selected: "
-            f"{data['title']}"
+            "[MUSIC] ✅ Selected:",
+            data["title"]
         )
 
         return Song(
-
             data["title"],
-
             data["url"],
-
             data["thumbnail"],
-
             requester
-
         )
 
 
@@ -630,15 +546,13 @@ class MusicPlayer:
             )
 
             options.update({
-
                 "skip_download": True,
 
                 "format": (
                     "bestaudio[ext=webm]/"
                     "bestaudio[ext=m4a]/"
                     "bestaudio/best"
-                )
-
+                ),
             })
 
             with yt_dlp.YoutubeDL(
@@ -666,9 +580,7 @@ class MusicPlayer:
 
                     info = entries[0]
 
-                return info.get(
-                    "url"
-                )
+                return info.get("url")
 
         try:
 
@@ -699,18 +611,14 @@ class MusicPlayer:
     # AUTOPLAY SEARCH
     # =====================================================
 
-    async def resolve_autoplay_song(
-        self
-    ):
+    async def resolve_autoplay_song(self):
 
         if not self.current:
             return None
 
         loop = asyncio.get_running_loop()
 
-        previous_url = (
-            self.current.url
-        )
+        previous_url = self.current.url
 
         previous_title = (
             self.current.title
@@ -718,28 +626,17 @@ class MusicPlayer:
             .strip()
         )
 
-        requester = (
-            self.current.requester
-        )
+        requester = self.current.requester
 
         autoplay_queries = [
-
             "popular Hindi songs",
-
             "latest Hindi songs",
-
             "Hindi romantic songs",
-
             "Bollywood songs",
-
             "trending Hindi songs",
-
             "best Hindi songs",
-
             "Hindi songs",
-
             "popular Bollywood music",
-
         ]
 
         random.shuffle(
@@ -752,13 +649,8 @@ class MusicPlayer:
                 YTDLP_OPTIONS
             )
 
-            options[
-                "skip_download"
-            ] = True
-
-            options[
-                "extract_flat"
-            ] = True
+            options["skip_download"] = True
+            options["extract_flat"] = True
 
             for query in autoplay_queries:
 
@@ -769,20 +661,15 @@ class MusicPlayer:
                     ) as ydl:
 
                         info = ydl.extract_info(
-
                             f"ytsearch10:{query}",
-
                             download=False
-
                         )
 
                     if not info:
                         continue
 
                     entries = (
-                        info.get(
-                            "entries"
-                        )
+                        info.get("entries")
                         or []
                     )
 
@@ -808,9 +695,7 @@ class MusicPlayer:
                             or entry.get(
                                 "original_url"
                             )
-                            or entry.get(
-                                "url"
-                            )
+                            or entry.get("url")
                         )
 
                         if not url:
@@ -826,17 +711,13 @@ class MusicPlayer:
                             continue
 
                         if (
-                            "youtube.com"
-                            not in url
+                            "youtube.com" not in url
                             and
-                            "youtu.be"
-                            not in url
+                            "youtu.be" not in url
                         ):
                             continue
 
-                        valid.append(
-                            entry
-                        )
+                        valid.append(entry)
 
                     if valid:
 
@@ -845,12 +726,10 @@ class MusicPlayer:
                         )
 
                         return {
-
                             "title": entry.get(
                                 "title",
                                 "Unknown Song"
                             ),
-
                             "url": (
                                 entry.get(
                                     "webpage_url"
@@ -858,15 +737,11 @@ class MusicPlayer:
                                 or entry.get(
                                     "original_url"
                                 )
-                                or entry.get(
-                                    "url"
-                                )
+                                or entry.get("url")
                             ),
-
                             "thumbnail": entry.get(
                                 "thumbnail"
-                            )
-
+                            ),
                         }
 
                 except Exception as e:
@@ -904,15 +779,10 @@ class MusicPlayer:
         )
 
         return Song(
-
             data["title"],
-
             data["url"],
-
             data.get("thumbnail"),
-
             requester
-
         )
 
 
@@ -920,9 +790,7 @@ class MusicPlayer:
     # PLAY NEXT
     # =====================================================
 
-    async def play_next(
-        self
-    ):
+    async def play_next(self):
 
         async with self.play_lock:
 
@@ -939,20 +807,18 @@ class MusicPlayer:
 
             try:
 
-                # ------------------------------------------------
+                # =========================================
                 # LOOP
-                # ------------------------------------------------
+                # =========================================
 
-                if (
-                    self.loop
-                    and self.current
-                ):
+                if self.loop and self.current:
 
                     song = self.current
 
-                # ------------------------------------------------
-                # QUEUE FIRST
-                # ------------------------------------------------
+
+                # =========================================
+                # QUEUE
+                # =========================================
 
                 elif self.queue:
 
@@ -960,9 +826,10 @@ class MusicPlayer:
 
                     self.current = song
 
-                # ------------------------------------------------
+
+                # =========================================
                 # AUTOPLAY
-                # ------------------------------------------------
+                # =========================================
 
                 elif (
                     self.autoplay
@@ -987,21 +854,22 @@ class MusicPlayer:
 
                         self.current = None
 
-                        await self.update_activity()
+                        await self.clear_voice_status()
 
                         return
 
                     self.current = song
 
-                # ------------------------------------------------
+
+                # =========================================
                 # NOTHING
-                # ------------------------------------------------
+                # =========================================
 
                 else:
 
                     self.current = None
 
-                    await self.update_activity()
+                    await self.clear_voice_status()
 
                     return
 
@@ -1012,9 +880,9 @@ class MusicPlayer:
                 )
 
 
-                # ------------------------------------------------
+                # =========================================
                 # GET STREAM
-                # ------------------------------------------------
+                # =========================================
 
                 stream_url = (
                     await self.get_audio_stream(
@@ -1023,9 +891,9 @@ class MusicPlayer:
                 )
 
 
-                # ------------------------------------------------
-                # STREAM FAILED
-                # ------------------------------------------------
+                # =========================================
+                # RETRY WITH AUTOPLAY
+                # =========================================
 
                 if not stream_url:
 
@@ -1059,14 +927,14 @@ class MusicPlayer:
 
                         self.current = None
 
-                        await self.update_activity()
+                        await self.clear_voice_status()
 
                         return
 
 
-                # ------------------------------------------------
+                # =========================================
                 # STOP OLD SOURCE
-                # ------------------------------------------------
+                # =========================================
 
                 if (
                     self.voice.is_playing()
@@ -1080,71 +948,53 @@ class MusicPlayer:
                     )
 
 
-                # ------------------------------------------------
+                # =========================================
                 # FFMPEG
-                # ------------------------------------------------
+                # =========================================
 
                 before_options = (
-
                     "-reconnect 1 "
-
                     "-reconnect_streamed 1 "
-
                     "-reconnect_delay_max 10 "
-
                     "-nostdin"
-
                 )
 
                 ffmpeg_options = (
-
                     "-vn "
-
                     "-loglevel warning"
-
                 )
 
 
                 source = discord.FFmpegPCMAudio(
-
                     stream_url,
-
                     executable=FFMPEG_PATH,
-
                     before_options=before_options,
-
                     options=ffmpeg_options
-
                 )
 
 
                 source = (
                     discord.PCMVolumeTransformer(
-
                         source,
-
                         volume=self.volume
-
                     )
                 )
 
 
-                # ------------------------------------------------
+                # =========================================
                 # TOKEN
-                # ------------------------------------------------
+                # =========================================
 
                 self.play_token += 1
 
                 token = self.play_token
 
 
-                # ------------------------------------------------
+                # =========================================
                 # CALLBACK
-                # ------------------------------------------------
+                # =========================================
 
-                def after_play(
-                    error
-                ):
+                def after_play(error):
 
                     if error:
 
@@ -1156,13 +1006,8 @@ class MusicPlayer:
                     try:
 
                         asyncio.run_coroutine_threadsafe(
-
-                            self.finished(
-                                token
-                            ),
-
+                            self.finished(token),
                             self.bot.loop
-
                         )
 
                     except Exception as e:
@@ -1173,16 +1018,13 @@ class MusicPlayer:
                         )
 
 
-                # ------------------------------------------------
-                # START PLAYBACK
-                # ------------------------------------------------
+                # =========================================
+                # PLAY
+                # =========================================
 
                 self.voice.play(
-
                     source,
-
                     after=after_play
-
                 )
 
 
@@ -1192,18 +1034,18 @@ class MusicPlayer:
                 )
 
 
-                # ------------------------------------------------
-                # UPDATE VC STATUS
-                # ------------------------------------------------
+                # =========================================
+                # VC STATUS
+                # =========================================
 
-                await self.update_activity(
-                    song
+                await self.update_voice_status(
+                    f"🎵 {song.title}"
                 )
 
 
-                # ------------------------------------------------
+                # =========================================
                 # NOW PLAYING EMBED
-                # ------------------------------------------------
+                # =========================================
 
                 await self.send_now_playing()
 
@@ -1229,7 +1071,6 @@ class MusicPlayer:
         token
     ):
 
-        # Old callback ignore
         if token != self.play_token:
             return
 
@@ -1246,12 +1087,10 @@ class MusicPlayer:
 
 
     # =====================================================
-    # NOW PLAYING EMBED
+    # NOW PLAYING
     # =====================================================
 
-    async def send_now_playing(
-        self
-    ):
+    async def send_now_playing(self):
 
         if not self.text_channel:
             return
@@ -1262,38 +1101,23 @@ class MusicPlayer:
         song = self.current
 
         embed = discord.Embed(
-
             title="🎵 HSL-CORP MUSIC",
-
             description=(
-
                 "## 🎶 NOW PLAYING\n\n"
-
-                f"**[{song.title}]"
-                f"({song.url})**\n\n"
-
+                f"**[{song.title}]({song.url})**\n\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
-
                 f"👤 Requested by: "
                 f"{song.requester.mention}\n"
-
                 f"🔊 Volume: "
                 f"{int(self.volume * 100)}%\n"
-
                 f"🔁 Loop: "
                 f"{'🟢 ON' if self.loop else '🔴 OFF'}\n"
-
                 f"🤖 Autoplay: "
                 f"{'🟢 ON' if self.autoplay else '🔴 OFF'}\n"
-
                 "━━━━━━━━━━━━━━━━━━━━"
-
             ),
-
             color=discord.Color.blurple()
-
         )
-
 
         if song.thumbnail:
 
@@ -1301,50 +1125,34 @@ class MusicPlayer:
                 url=song.thumbnail
             )
 
-
-        # Animated HSL GIF
         embed.set_thumbnail(
             url=HSL_GIF
         )
 
-
         embed.set_footer(
-            text=(
-                "HSL & CORPORATION • "
-                "Music System"
-            )
+            text="HSL & CORPORATION • Music System"
         )
-
 
         view = MusicControlView(
             self
         )
-
 
         try:
 
             if self.now_playing_message:
 
                 await self.now_playing_message.edit(
-
                     embed=embed,
-
                     view=view
-
                 )
 
             else:
 
                 self.now_playing_message = (
-
                     await self.text_channel.send(
-
                         embed=embed,
-
                         view=view
-
                     )
-
                 )
 
         except Exception as e:
@@ -1395,13 +1203,9 @@ class MusicControlView(
         if not voice:
 
             return await interaction.response.send_message(
-
                 "❌ Music is not playing.",
-
                 ephemeral=True
-
             )
-
 
         if voice.is_playing():
 
@@ -1413,7 +1217,6 @@ class MusicControlView(
                 view=self
             )
 
-
         elif voice.is_paused():
 
             voice.resume()
@@ -1424,15 +1227,11 @@ class MusicControlView(
                 view=self
             )
 
-
         else:
 
             await interaction.response.send_message(
-
                 "❌ Music is not playing.",
-
                 ephemeral=True
-
             )
 
 
@@ -1454,20 +1253,13 @@ class MusicControlView(
         if not self.player.voice:
 
             return await interaction.response.send_message(
-
                 "❌ Music is not playing.",
-
                 ephemeral=True
-
             )
-
 
         await interaction.response.defer()
 
-
-        # Invalidate old callback
         self.player.play_token += 1
-
 
         if (
             self.player.voice.is_playing()
@@ -1476,15 +1268,11 @@ class MusicControlView(
 
             self.player.voice.stop()
 
-
-        # Keep current for autoplay
         self.player.starting = False
-
 
         await asyncio.sleep(
             0.5
         )
-
 
         await self.player.play_next()
 
@@ -1504,26 +1292,17 @@ class MusicControlView(
         button: discord.ui.Button
     ):
 
-        self.player.loop = (
-            not self.player.loop
-        )
+        self.player.loop = not self.player.loop
 
         status = (
-
             "🟢 ON"
-
             if self.player.loop
-
             else "🔴 OFF"
-
         )
 
         await interaction.response.send_message(
-
             f"🔁 Loop: **{status}**",
-
             ephemeral=True
-
         )
 
         await self.player.send_now_playing()
@@ -1549,21 +1328,14 @@ class MusicControlView(
         )
 
         status = (
-
             "🟢 ON"
-
             if self.player.autoplay
-
             else "🔴 OFF"
-
         )
 
         await interaction.response.send_message(
-
             f"🤖 Autoplay: **{status}**",
-
             ephemeral=True
-
         )
 
         await self.player.send_now_playing()
@@ -1586,7 +1358,6 @@ class MusicControlView(
 
         await interaction.response.defer()
 
-
         self.player.play_token += 1
 
         self.player.queue.clear()
@@ -1595,8 +1366,9 @@ class MusicControlView(
 
         self.player.starting = False
 
-
         if self.player.voice:
+
+            await self.player.clear_voice_status()
 
             if (
                 self.player.voice.is_playing()
@@ -1604,7 +1376,6 @@ class MusicControlView(
             ):
 
                 self.player.voice.stop()
-
 
             try:
 
@@ -1614,28 +1385,17 @@ class MusicControlView(
 
                 pass
 
-
         self.player.voice = None
-
-
-        await self.player.update_activity()
-
 
         try:
 
             await interaction.message.edit(
-
                 content=(
-
                     "⏹️ **Music stopped "
                     "& queue cleared.**"
-
                 ),
-
                 embed=None,
-
                 view=None
-
             )
 
         except Exception:
@@ -1660,6 +1420,12 @@ class Music(
 
         self.players = {}
 
+        # =============================================
+        # GLOBAL PLAY COMMAND LOCKS
+        # =============================================
+
+        self.play_command_locks = {}
+
 
     # =====================================================
     # GET PLAYER
@@ -1678,9 +1444,25 @@ class Music(
                 )
             )
 
-        return self.players[
-            guild_id
-        ]
+        return self.players[guild_id]
+
+
+    # =====================================================
+    # GET PLAY LOCK
+    # =====================================================
+
+    def get_play_lock(
+        self,
+        guild_id
+    ):
+
+        if guild_id not in self.play_command_locks:
+
+            self.play_command_locks[guild_id] = (
+                asyncio.Lock()
+            )
+
+        return self.play_command_locks[guild_id]
 
 
     # =====================================================
@@ -1701,23 +1483,17 @@ class Music(
         if not ctx.guild:
 
             return await ctx.send(
-
                 "❌ This command can only be "
                 "used in a server.",
-
                 delete_after=4
-
             )
 
 
         if not ctx.author.voice:
 
             return await ctx.send(
-
                 "❌ Please join a voice channel first.",
-
                 delete_after=4
-
             )
 
 
@@ -1725,279 +1501,235 @@ class Music(
             ctx.guild.id
         )
 
+        lock = self.get_play_lock(
+            ctx.guild.id
+        )
+
 
         # =================================================
-        # IMPORTANT DUPLICATE PROTECTION
+        # PREVENT SIMULTANEOUS / DUPLICATE PLAY COMMANDS
         # =================================================
 
-        async with player.command_lock:
+        async with lock:
 
-            # ------------------------------------------------
-            # Create request identifier
-            # ------------------------------------------------
+            player.text_channel = ctx.channel
 
-            request_key = (
-                f"{ctx.author.id}:"
-                f"{query.strip().lower()}"
+            voice_channel = (
+                ctx.author.voice.channel
             )
 
 
-            # ------------------------------------------------
-            # If exact same request is already processing,
-            # ignore duplicate dispatch.
-            # ------------------------------------------------
+            # =============================================
+            # DUPLICATE REQUEST PROTECTION
+            # =============================================
 
-            if request_key in player.recent_requests:
+            request_key = (
+                f"{ctx.author.id}:"
+                f"{str(query).strip().lower()}"
+            )
+
+            current_time = time.monotonic()
+
+            if (
+                player.last_play_request
+                == request_key
+                and
+                current_time
+                - player.last_play_request_time
+                < 3.0
+            ):
 
                 print(
-                    "[MUSIC] ⚠️ Duplicate !play request ignored:",
+                    "[MUSIC] ⚠️ Duplicate play "
+                    "request ignored:",
                     query
                 )
 
                 return await ctx.send(
-
-                    "⚠️ **This song request is already "
-                    "being processed.**",
-
+                    "⚠️ **Same play request already received.**",
                     delete_after=3
-
                 )
 
 
-            player.recent_requests.add(
+            player.last_play_request = (
                 request_key
             )
+
+            player.last_play_request_time = (
+                current_time
+            )
+
+
+            # =============================================
+            # CONNECT
+            # =============================================
+
+            try:
+
+                if ctx.voice_client:
+
+                    player.voice = (
+                        ctx.voice_client
+                    )
+
+                    if (
+                        player.voice.channel
+                        != voice_channel
+                    ):
+
+                        await player.voice.move_to(
+                            voice_channel
+                        )
+
+                else:
+
+                    player.voice = (
+                        await voice_channel.connect()
+                    )
+
+            except Exception as e:
+
+                print(
+                    "[MUSIC] ❌ VOICE ERROR:",
+                    repr(e)
+                )
+
+                return await ctx.send(
+                    "❌ Failed to connect "
+                    "to the voice channel.",
+                    delete_after=5
+                )
+
+
+            loading = await ctx.send(
+                "🔎 **Loading song...**"
+            )
+
+
+            # =============================================
+            # RESOLVE
+            # =============================================
+
+            song = await player.resolve_song(
+                query,
+                ctx.author
+            )
+
+
+            if not song:
+
+                return await loading.edit(
+                    content=(
+                        "❌ **Song not found / "
+                        "YouTube blocked the request.**"
+                    )
+                )
 
 
             try:
 
-                player.text_channel = ctx.channel
+                await loading.delete()
 
-                voice_channel = (
-                    ctx.author.voice.channel
-                )
+            except Exception:
 
+                pass
 
-                # =============================================
-                # CONNECT
-                # =============================================
 
-                try:
+            # =============================================
+            # WAS PLAYING
+            # =============================================
 
-                    if ctx.voice_client:
-
-                        player.voice = (
-                            ctx.voice_client
-                        )
-
-                        if (
-                            player.voice.channel
-                            != voice_channel
-                        ):
-
-                            await player.voice.move_to(
-                                voice_channel
-                            )
-
-                    else:
-
-                        player.voice = (
-
-                            await voice_channel.connect()
-
-                        )
-
-                except Exception as e:
-
-                    print(
-                        "[MUSIC] ❌ VOICE ERROR:",
-                        repr(e)
-                    )
-
-                    return await ctx.send(
-
-                        "❌ Failed to connect "
-                        "to the voice channel.",
-
-                        delete_after=5
-
-                    )
-
-
-                loading = await ctx.send(
-                    "🔎 **Loading song...**"
-                )
-
-
-                # =============================================
-                # RESOLVE
-                # =============================================
-
-                song = await player.resolve_song(
-
-                    query,
-
-                    ctx.author
-
-                )
-
-
-                if not song:
-
-                    return await loading.edit(
-
-                        content=(
-
-                            "❌ **Song not found / "
-                            "YouTube blocked the request.**"
-
-                        )
-
-                    )
-
-
-                try:
-
-                    await loading.delete()
-
-                except Exception:
-
-                    pass
-
-
-                # =============================================
-                # DETERMINE CURRENT STATE
-                # =============================================
-
-                was_playing = (
-
-                    player.starting
-
-                    or (
-
-                        player.voice
-
-                        and (
-
-                            player.voice.is_playing()
-
-                            or player.voice.is_paused()
-
-                        )
-
-                    )
-
-                    or player.current is not None
-
-                )
-
-
-                # =============================================
-                # ADD ONLY ONCE
-                # =============================================
-
-                player.queue.append(
-                    song
-                )
-
-
-                print(
-                    "[MUSIC] ➕ Added:",
-                    song.title
-                )
-
-
-                # =============================================
-                # ALREADY PLAYING
-                # =============================================
-
-                if was_playing:
-
-                    position = len(
-                        player.queue
-                    )
-
-
-                    embed = discord.Embed(
-
-                        title="🎵 ADDED TO QUEUE",
-
-                        description=(
-
-                            f"**[{song.title}]"
-                            f"({song.url})**\n\n"
-
-                            f"👤 {ctx.author.mention}\n"
-
-                            f"📍 Position: "
-                            f"`{position}`"
-
-                        ),
-
-                        color=discord.Color.green()
-
-                    )
-
-
-                    if song.thumbnail:
-
-                        embed.set_image(
-                            url=song.thumbnail
-                        )
-
-
-                    embed.set_thumbnail(
-                        url=HSL_GIF
-                    )
-
-
-                    return await ctx.send(
-
-                        embed=embed,
-
-                        delete_after=8
-
-                    )
-
-
-                # =============================================
-                # START MUSIC
-                # =============================================
-
-                await player.play_next()
-
-
-                await asyncio.sleep(
-                    1
-                )
-
-
-                if (
-
+            was_playing = (
+                player.starting
+                or
+                (
                     player.voice
+                    and
+                    (
+                        player.voice.is_playing()
+                        or
+                        player.voice.is_paused()
+                    )
+                )
+                or
+                player.current is not None
+            )
 
-                    and not player.voice.is_playing()
 
-                    and not player.starting
+            # =============================================
+            # ADD TO QUEUE
+            # =============================================
 
-                ):
+            player.queue.append(
+                song
+            )
 
-                    await ctx.send(
 
-                        "❌ **Audio failed to start.**",
+            print(
+                "[MUSIC] ➕ Added:",
+                song.title
+            )
 
-                        delete_after=6
 
+            # =============================================
+            # ALREADY PLAYING
+            # =============================================
+
+            if was_playing:
+
+                position = len(
+                    player.queue
+                )
+
+                embed = discord.Embed(
+                    title="🎵 ADDED TO QUEUE",
+                    description=(
+                        f"**[{song.title}]({song.url})**\n\n"
+                        f"👤 {ctx.author.mention}\n"
+                        f"📍 Position: `{position}`"
+                    ),
+                    color=discord.Color.green()
+                )
+
+                if song.thumbnail:
+
+                    embed.set_image(
+                        url=song.thumbnail
                     )
 
-            finally:
+                embed.set_thumbnail(
+                    url=HSL_GIF
+                )
 
-                # ------------------------------------------------
-                # Remove request lock after command finishes.
-                # ------------------------------------------------
+                return await ctx.send(
+                    embed=embed,
+                    delete_after=8
+                )
 
-                player.recent_requests.discard(
-                    request_key
+
+            # =============================================
+            # START MUSIC
+            # =============================================
+
+            await player.play_next()
+
+
+            await asyncio.sleep(
+                1
+            )
+
+
+            if (
+                player.voice
+                and
+                not player.voice.is_playing()
+                and
+                not player.starting
+            ):
+
+                await ctx.send(
+                    "❌ **Audio failed to start.**",
+                    delete_after=6
                 )
 
 
@@ -2018,38 +1750,28 @@ class Music(
             ctx.guild.id
         )
 
-
         if not player.voice:
 
             return await ctx.send(
-
                 "❌ Music is not playing.",
-
                 delete_after=4
-
             )
 
-
-        # Invalidate old callback
         player.play_token += 1
-
 
         if (
             player.voice.is_playing()
-            or player.voice.is_paused()
+            or
+            player.voice.is_paused()
         ):
 
             player.voice.stop()
 
-
-        # Keep current for autoplay
         player.starting = False
-
 
         await asyncio.sleep(
             0.5
         )
-
 
         await player.play_next()
 
@@ -2071,29 +1793,22 @@ class Music(
             ctx.guild.id
         )
 
-
         if (
             player.voice
-            and player.voice.is_playing()
+            and
+            player.voice.is_playing()
         ):
 
             player.voice.pause()
 
             return await ctx.send(
-
                 "⏸️ **Music paused.**",
-
                 delete_after=3
-
             )
 
-
         await ctx.send(
-
             "❌ Music is not playing.",
-
             delete_after=3
-
         )
 
 
@@ -2114,29 +1829,22 @@ class Music(
             ctx.guild.id
         )
 
-
         if (
             player.voice
-            and player.voice.is_paused()
+            and
+            player.voice.is_paused()
         ):
 
             player.voice.resume()
 
             return await ctx.send(
-
                 "▶️ **Music resumed.**",
-
                 delete_after=3
-
             )
 
-
         await ctx.send(
-
             "❌ Music is not paused.",
-
             delete_after=3
-
         )
 
 
@@ -2157,7 +1865,6 @@ class Music(
             ctx.guild.id
         )
 
-
         player.play_token += 1
 
         player.queue.clear()
@@ -2166,16 +1873,17 @@ class Music(
 
         player.starting = False
 
-
         if player.voice:
+
+            await player.clear_voice_status()
 
             if (
                 player.voice.is_playing()
-                or player.voice.is_paused()
+                or
+                player.voice.is_paused()
             ):
 
                 player.voice.stop()
-
 
             try:
 
@@ -2185,20 +1893,12 @@ class Music(
 
                 pass
 
-
         player.voice = None
 
-
-        await player.update_activity()
-
-
         await ctx.send(
-
             "⏹️ **Music stopped & "
             "queue cleared.**",
-
             delete_after=4
-
         )
 
 
@@ -2219,54 +1919,34 @@ class Music(
             ctx.guild.id
         )
 
-
         if not player.queue:
 
             return await ctx.send(
-
                 "📭 **Queue is empty.**",
-
                 delete_after=4
-
             )
-
 
         lines = []
 
-
         for index, song in enumerate(
-
             list(player.queue)[:15],
-
             1
-
         ):
 
             lines.append(
-
                 f"`{index}.` "
                 f"**{song.title[:70]}**"
-
             )
 
-
         embed = discord.Embed(
-
             title="📜 HSL-CORP MUSIC QUEUE",
-
-            description="\n".join(
-                lines
-            ),
-
+            description="\n".join(lines),
             color=discord.Color.blurple()
-
         )
-
 
         embed.set_thumbnail(
             url=HSL_GIF
         )
-
 
         await ctx.send(
             embed=embed
@@ -2290,24 +1970,18 @@ class Music(
         if amount < 0 or amount > 200:
 
             return await ctx.send(
-
                 "❌ Volume must be between "
                 "`0` and `200`.",
-
                 delete_after=4
-
             )
-
 
         player = self.get_player(
             ctx.guild.id
         )
 
-
         player.volume = (
             amount / 100
         )
-
 
         if player.voice:
 
@@ -2315,27 +1989,18 @@ class Music(
                 player.voice.source
             )
 
-
             if isinstance(
-
                 source,
-
                 discord.PCMVolumeTransformer
-
             ):
 
                 source.volume = (
                     amount / 100
                 )
 
-
         await ctx.send(
-
-            f"🔊 **Volume set to "
-            f"{amount}%**",
-
+            f"🔊 **Volume set to {amount}%**",
             delete_after=4
-
         )
 
 
@@ -2356,29 +2021,17 @@ class Music(
             ctx.guild.id
         )
 
-
-        player.loop = (
-            not player.loop
-        )
-
+        player.loop = not player.loop
 
         status = (
-
             "🟢 ON"
-
             if player.loop
-
             else "🔴 OFF"
-
         )
 
-
         await ctx.send(
-
             f"🔁 **Loop: {status}**",
-
             delete_after=4
-
         )
 
 
@@ -2399,48 +2052,31 @@ class Music(
             ctx.guild.id
         )
 
-
         player.autoplay = (
             not player.autoplay
         )
 
-
         status = (
-
             "🟢 ON"
-
             if player.autoplay
-
             else "🔴 OFF"
-
         )
-
 
         await ctx.send(
-
             f"🤖 **Autoplay: {status}**",
-
             delete_after=4
-
         )
 
-
-        # ------------------------------------------------
-        # Start autoplay if enabled while idle
-        # ------------------------------------------------
-
         if (
-
             player.autoplay
-
-            and player.voice
-
-            and player.current
-
-            and not player.voice.is_playing()
-
-            and not player.voice.is_paused()
-
+            and
+            player.voice
+            and
+            player.current
+            and
+            not player.voice.is_playing()
+            and
+            not player.voice.is_paused()
         ):
 
             await player.play_next()
@@ -2463,17 +2099,12 @@ class Music(
             ctx.guild.id
         )
 
-
         if not player.current:
 
             return await ctx.send(
-
                 "❌ Nothing is playing.",
-
                 delete_after=4
-
             )
-
 
         await player.send_now_playing()
 
@@ -2485,16 +2116,6 @@ class Music(
 async def setup(
     bot
 ):
-
-    # Prevent accidental double-loading
-    if bot.get_cog("Music") is not None:
-
-        print(
-            "[MUSIC] ⚠️ Music cog already loaded. "
-            "Skipping duplicate load."
-        )
-
-        return
 
     await bot.add_cog(
         Music(bot)
