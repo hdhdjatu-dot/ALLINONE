@@ -1,4 +1,5 @@
 import asyncio
+import aiohttp
 import os
 import shutil
 import ctypes
@@ -380,6 +381,82 @@ class MusicPlayer:
 
             print(
                 "[MUSIC] ⚠️ Activity update failed:",
+                repr(e)
+            )
+
+
+    # =====================================================
+    # UPDATE DISCORD VOICE CHANNEL STATUS
+    # =====================================================
+
+    async def update_voice_channel_status(
+        self,
+        song=None
+    ):
+        try:
+            if not self.voice:
+                return
+
+            if not self.voice.is_connected():
+                return
+
+            channel = self.voice.channel
+
+            if not channel:
+                return
+
+            if song:
+                title = str(song.title)
+
+                if len(title) > 480:
+                    title = title[:477] + "..."
+
+                status = f"🎵 Playing: {title}"
+            else:
+                status = None
+
+            url = (
+                f"https://discord.com/api/v10"
+                f"/channels/{channel.id}/voice-status"
+            )
+
+            headers = {
+                "Authorization": f"Bot {self.bot.http.token}",
+                "Content-Type": "application/json"
+            }
+
+            payload = {"status": status}
+
+            async with aiohttp.ClientSession() as session:
+                async with session.put(
+                    url,
+                    headers=headers,
+                    json=payload
+                ) as response:
+
+                    if response.status not in (200, 204):
+                        body = await response.text()
+                        print(
+                            "[MUSIC] ⚠️ VC status failed:",
+                            response.status,
+                            body
+                        )
+                        return
+
+            if song:
+                print(
+                    "[MUSIC] 🎵 VC STATUS:",
+                    status
+                )
+            else:
+                print(
+                    "[MUSIC] 🧹 VC STATUS CLEARED"
+                )
+
+        except Exception as e:
+            # Status failure must never break music playback.
+            print(
+                "[MUSIC] ⚠️ Voice status error:",
                 repr(e)
             )
 
