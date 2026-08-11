@@ -20,13 +20,12 @@ DATA_FILE = "security_data.json"
 #
 # IMPORTANT:
 # Yahan DISCORD USER IDs hone chahiye.
-#
 # Server IDs nahi.
 #
-# Server Owner ko automatically access milega.
+# In users ko owner-level SECURITY COMMAND access milega.
 #
-# STRICT ANTI-BOT:
-# Sirf SERVER OWNER bot add kar sakta hai.
+# NOTE:
+# STRICT ANTI-BOT mein sirf SERVER OWNER bot add kar sakta hai.
 #
 # ============================================================
 
@@ -219,19 +218,7 @@ class Security(commands.Cog):
 
 
     # ========================================================
-    # OWNER CHECK
-    # ========================================================
-    #
-    # ONLY:
-    #
-    # 1. SERVER OWNER
-    # 2. BOT OWNER
-    #
-    # Administrator does NOT bypass.
-    # Moderator does NOT bypass.
-    # Manage Messages does NOT bypass.
-    # Manage Roles does NOT bypass.
-    #
+    # SERVER OWNER / BOT OWNER CHECK
     # ========================================================
 
     async def is_owner(
@@ -248,18 +235,21 @@ class Security(commands.Cog):
         # SERVER OWNER
 
         if member.id == member.guild.owner_id:
+
             return True
 
         # MANUAL BOT OWNER
 
         if member.id in BOT_OWNER_IDS:
+
             return True
 
-        # DISCORD.PY BOT OWNER
+        # DISCORD.PY OWNER
 
         try:
 
             if await self.bot.is_owner(member):
+
                 return True
 
         except Exception as e:
@@ -270,27 +260,6 @@ class Security(commands.Cog):
             )
 
         return False
-
-
-    # ========================================================
-    # COMMAND OWNER CHECK
-    # ========================================================
-    #
-    # Used for commands.
-    #
-    # ========================================================
-
-    async def owner_check(
-        self,
-        ctx
-    ):
-
-        if not ctx.guild:
-            return False
-
-        return await self.is_owner(
-            ctx.author
-        )
 
 
     # ========================================================
@@ -309,14 +278,17 @@ class Security(commands.Cog):
             return False
 
         if member.id == member.guild.owner_id:
+
             return True
 
         if member.id in BOT_OWNER_IDS:
+
             return True
 
         try:
 
             if await self.bot.is_owner(member):
+
                 return True
 
         except Exception:
@@ -336,6 +308,7 @@ class Security(commands.Cog):
     ):
 
         if value:
+
             return "🟢 **ON**"
 
         return "🔴 **OFF**"
@@ -392,9 +365,7 @@ class Security(commands.Cog):
             ctx.guild.id
         )
 
-        # ====================================================
         # INTRO
-        # ====================================================
 
         for i in range(10):
 
@@ -450,10 +421,7 @@ class Security(commands.Cog):
                 0.16
             )
 
-
-        # ====================================================
         # EACH SECURITY
-        # ====================================================
 
         completed = []
 
@@ -624,7 +592,6 @@ class Security(commands.Cog):
                 0.45
             )
 
-
         final_text = (
             "SYSTEM ONLINE"
             if enabled
@@ -687,8 +654,11 @@ class Security(commands.Cog):
         )
 
         try:
+
             await message.delete()
+
         except Exception:
+
             pass
 
 
@@ -764,17 +734,6 @@ class Security(commands.Cog):
         ctx
     ):
 
-        # OWNER ONLY
-
-        if not await self.is_owner(
-            ctx.author
-        ):
-
-            return await ctx.send(
-                "❌ **Only the server owner or bot owner can use this.**",
-                delete_after=5
-            )
-
         settings = self.get_settings(
             ctx.guild.id
         )
@@ -837,25 +796,14 @@ class Security(commands.Cog):
         description="Delete messages"
     )
     @commands.guild_only()
+    @commands.has_permissions(
+        manage_messages=True
+    )
     async def clear(
         self,
         ctx,
         amount: int
     ):
-
-        # OWNER ONLY
-        #
-        # NO Manage Messages bypass.
-        #
-
-        if not await self.is_owner(
-            ctx.author
-        ):
-
-            return await ctx.send(
-                "❌ **Only the server owner or bot owner can use this.**",
-                delete_after=5
-            )
 
         if amount < 1 or amount > 100:
 
@@ -884,8 +832,11 @@ class Security(commands.Cog):
             )
 
             try:
+
                 await msg.delete()
+
             except Exception:
+
                 pass
 
         except discord.Forbidden:
@@ -897,7 +848,20 @@ class Security(commands.Cog):
 
 
     # ========================================================
-    # SAY
+    # SAY COMMAND
+    # ========================================================
+    #
+    # HARD CHECK:
+    #
+    # SERVER OWNER       -> ALLOWED
+    # BOT_OWNER_IDS      -> ALLOWED
+    #
+    # ADMIN              -> DENIED
+    # MODERATOR          -> DENIED
+    # MANAGE SERVER      -> DENIED
+    # MANAGE MESSAGES    -> DENIED
+    # NORMAL USER        -> DENIED
+    #
     # ========================================================
 
     @commands.hybrid_command(
@@ -912,16 +876,51 @@ class Security(commands.Cog):
         text: str
     ):
 
-        # OWNER ONLY
+        # ====================================================
+        # HARD OWNER CHECK
+        # ====================================================
 
-        if not await self.is_owner(
-            ctx.author
+        user_id = ctx.author.id
+
+        server_owner_id = ctx.guild.owner_id
+
+        # ONLY SERVER OWNER OR MANUAL BOT OWNER
+        #
+        # IMPORTANT:
+        # self.bot.is_owner() intentionally NOT used here.
+        #
+        # This prevents any other bot-owner configuration
+        # from accidentally giving access.
+
+        if (
+            user_id != server_owner_id
+            and user_id not in BOT_OWNER_IDS
         ):
 
-            return await ctx.send(
-                "❌ **Only the server owner or bot owner can use this.**",
-                delete_after=5
+            print(
+                f"[SECURITY] ❌ BLOCKED !say | "
+                f"User={ctx.author} "
+                f"ID={user_id} | "
+                f"Guild={ctx.guild.name} "
+                f"({ctx.guild.id})"
             )
+
+            try:
+
+                await ctx.send(
+                    "❌ **Only the Server Owner or HSL-CORP Bot Owner can use `!say`.**",
+                    delete_after=5
+                )
+
+            except Exception:
+
+                pass
+
+            return
+
+        # ====================================================
+        # EMPTY MESSAGE
+        # ====================================================
 
         if not text or not text.strip():
 
@@ -933,34 +932,47 @@ class Security(commands.Cog):
 
         text = text.strip()
 
-        try:
+        # ====================================================
+        # SEND AS BOT
+        # ====================================================
 
-            # BOT MESSAGE PERMANENT
+        try:
 
             await ctx.send(
                 text,
                 allowed_mentions=discord.AllowedMentions.none()
             )
 
-            # ORIGINAL COMMAND DELETE
+            # ONLY PREFIX COMMAND DELETE
+            #
+            # Bot ka actual sent message delete nahi hoga.
 
             if ctx.message:
 
                 try:
+
                     await ctx.message.delete()
+
                 except Exception:
+
                     pass
+
+            print(
+                f"[SECURITY] ✅ !say used by "
+                f"{ctx.author} ({ctx.author.id})"
+            )
 
         except discord.Forbidden:
 
             try:
 
                 await ctx.send(
-                    "❌ **Mujhe message send karne ki permission nahi hai.**",
+                    "❌ **Mujhe message send/delete karne ki permission nahi hai.**",
                     delete_after=5
                 )
 
             except Exception:
+
                 pass
 
         except discord.HTTPException as e:
@@ -970,12 +982,34 @@ class Security(commands.Cog):
                 repr(e)
             )
 
+            try:
+
+                await ctx.send(
+                    "❌ **Message send nahi ho paya.**",
+                    delete_after=5
+                )
+
+            except Exception:
+
+                pass
+
         except Exception as e:
 
             print(
                 "[SECURITY] SAY ERROR:",
                 repr(e)
             )
+
+            try:
+
+                await ctx.send(
+                    "❌ **Say command mein error aa gaya.**",
+                    delete_after=5
+                )
+
+            except Exception:
+
+                pass
 
 
     # ========================================================
@@ -1041,9 +1075,7 @@ class Security(commands.Cog):
 
         users = settings["whitelist_music"]
 
-        # ====================================================
         # SHOW LIST
-        # ====================================================
 
         if member is None:
 
@@ -1117,9 +1149,7 @@ class Security(commands.Cog):
                 embed=embed
             )
 
-        # ====================================================
         # ACTION NORMALIZATION
-        # ====================================================
 
         action = str(
             action
@@ -1146,9 +1176,7 @@ class Security(commands.Cog):
                 delete_after=8
             )
 
-        # ====================================================
         # REMOVE
-        # ====================================================
 
         if action in (
             "remove",
@@ -1180,9 +1208,7 @@ class Security(commands.Cog):
                 delete_after=6
             )
 
-        # ====================================================
         # ADD
-        # ====================================================
 
         if action in (
             "add",
@@ -1214,9 +1240,7 @@ class Security(commands.Cog):
                 delete_after=8
             )
 
-        # ====================================================
         # TOGGLE
-        # ====================================================
 
         if action == "toggle":
 
@@ -1266,11 +1290,6 @@ class Security(commands.Cog):
         member: discord.Member,
         role: discord.Role
     ):
-
-        # OWNER ONLY
-        #
-        # Manage Roles permission does NOT bypass.
-        #
 
         if not await self.is_owner(
             ctx.author
@@ -1381,10 +1400,6 @@ class Security(commands.Cog):
 
         inviter = None
 
-        # ====================================================
-        # FIND INVITER
-        # ====================================================
-
         for attempt in range(12):
 
             try:
@@ -1456,9 +1471,7 @@ class Security(commands.Cog):
                     repr(e)
                 )
 
-        # ====================================================
         # INVITER UNKNOWN
-        # ====================================================
 
         if inviter is None:
 
@@ -1482,7 +1495,7 @@ class Security(commands.Cog):
             return
 
         # ====================================================
-        # ONLY SERVER OWNER ALLOWED
+        # ONLY SERVER OWNER CAN ADD BOTS
         # ====================================================
 
         if inviter.id == guild.owner_id:
@@ -1503,7 +1516,7 @@ class Security(commands.Cog):
             return
 
         # ====================================================
-        # UNAUTHORIZED
+        # UNAUTHORIZED BOT
         # ====================================================
 
         print(
@@ -1689,7 +1702,7 @@ class Security(commands.Cog):
 
         guild = member.guild
 
-        # NEVER TOUCH SERVER OWNER
+        # SERVER OWNER PROTECTED
 
         if member.id == guild.owner_id:
 
@@ -1842,6 +1855,7 @@ class Security(commands.Cog):
             try:
 
                 if int(allowed_id) == user_id:
+
                     return True
 
             except (
@@ -1970,7 +1984,6 @@ class Security(commands.Cog):
                 )
             )
 
-
         # ====================================================
         # ANTI-LINK
         # ====================================================
@@ -2017,25 +2030,6 @@ class Security(commands.Cog):
 
                     return
 
-                # DISCORD.PY OWNER BYPASS
-
-                try:
-
-                    if await self.bot.is_owner(
-                        message.author
-                    ):
-
-                        print(
-                            f"[SECURITY] 👑 Discord.py owner "
-                            f"link allowed: {message.author}"
-                        )
-
-                        return
-
-                except Exception:
-
-                    pass
-
                 # MUSIC COMMAND
 
                 is_music = self.is_music_command(
@@ -2069,7 +2063,7 @@ class Security(commands.Cog):
 
                         return
 
-                # DELETE LINK
+                # DELETE UNAUTHORIZED LINK
 
                 try:
 
@@ -2190,10 +2184,6 @@ class Security(commands.Cog):
 
         print(
             "🛡️ HSL-CORP SECURITY ONLINE"
-        )
-
-        print(
-            "👑 COMMAND ACCESS: SERVER OWNER + BOT OWNER"
         )
 
         print(
