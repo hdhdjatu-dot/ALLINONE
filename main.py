@@ -61,6 +61,10 @@ class HSLBot(commands.Bot):
         print("🔄 Loading welcome.py...")
         await self.load_extension("cogs.welcome")
         print("✅ welcome.py loaded")
+
+        print("🔄 Loading welcome.py...")
+        await self.load_extension("cogs.infoCommands")
+        print("✅ welcome.py loaded")
            
         guild_ids = [
             1519933809402056805,  # Server 1
