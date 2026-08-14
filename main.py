@@ -5,7 +5,7 @@ from config import TOKEN
 from cogs.database import Database
 import aiohttp
 from dotenv import load_dotenv
-import traceback
+
 load_dotenv()
 # Load Opus for audio playback
 if not discord.opus.is_loaded():
@@ -31,59 +31,43 @@ class HSLBot(commands.Bot):
         self.db = Database()
         print("✅ database.py loaded")
               
-async def setup_hook(self):
+    async def setup_hook(self):
 
-    print("🔄 Loading utility.py...")
-    await self.load_extension("cogs.utility")
-    print("✅ utility.py loaded")
+        print("🔄 Loading utility.py...")
+        await self.load_extension("cogs.utility")
+        print("✅ utility.py loaded")
 
-    print("🔄 Loading security.py...")
-    await self.load_extension("cogs.security")
-    print("✅ security.py loaded")
+        print("🔄 Loading security.py...")
+        await self.load_extension("cogs.security")
+        print("✅ security.py loaded")
+        
+        print("🔄 Loading warnings.py...")
+        await self.load_extension("cogs.warnings")
+        print("✅ warnings.py loaded")
+        
+        print("🔄 Loading automod.py...")
+        await self.load_extension("cogs.automod")
+        print("✅ automod.py loaded")
+        
+        print("🔄 Loading logging.py...")
+        await self.load_extension("cogs.logging")
+        print("✅ logging.py loaded")
+        
+        print("🔄 Loading music.py...")
+        await self.load_extension("cogs.music")
+        print("✅ music.py loaded")
+        
+        print("🔄 Loading ticket.py...")
+        await self.load_extension("cogs.ticket")
+        print("✅ ticket.py loaded")
+        
+        print("🔄 Loading welcome.py...")
+        await self.load_extension("cogs.welcome")
+        print("✅ welcome.py loaded")
 
-    print("🔄 Loading warnings.py...")
-    await self.load_extension("cogs.warnings")
-    print("✅ warnings.py loaded")
-
-    print("🔄 Loading automod.py...")
-    await self.load_extension("cogs.automod")
-    print("✅ automod.py loaded")
-
-    print("🔄 Loading logging.py...")
-    await self.load_extension("cogs.logging")
-    print("✅ logging.py loaded")
-
-    print("🔄 Loading music.py...")
-    await self.load_extension("cogs.music")
-    print("✅ music.py loaded")
-
-    print("🔄 Loading ticket.py...")
-    await self.load_extension("cogs.ticket")
-    print("✅ ticket.py loaded")
-
-    print("🔄 Loading welcome.py...")
-    await self.load_extension("cogs.welcome")
-    print("✅ welcome.py loaded")
-
-    print("🔄 Loading infoCommands.py...")
-
-    try:
+        print("🔄 Loading infoCommands.py...")
         await self.load_extension("cogs.infoCommands")
         print("✅ infoCommands.py loaded")
-
-    except Exception as e:
-        print("❌ infoCommands.py FAILED TO LOAD")
-        print(f"❌ Error: {e}")
-        traceback.print_exc()
-
-    try:
-        synced = await self.tree.sync()
-        print(f"✅ Slash commands synced: {len(synced)}")
-
-    except Exception as e:
-        print("❌ Slash command sync failed")
-        print(f"❌ Error: {e}")
-        traceback.print_exc()
            
         guild_ids = [
             1519933809402056805,  # Server 1
