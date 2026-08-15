@@ -155,10 +155,12 @@ BASE_YTDLP = {
     "force_ipv4": True,
     "source_address": "0.0.0.0",
 
-    "socket_timeout": 20,
+    # FAST TIMEOUT
+    "socket_timeout": 8,
 
-    "retries": 4,
-    "fragment_retries": 4,
+    # FAST RETRIES
+    "retries": 2,
+    "fragment_retries": 2,
 
     "concurrent_fragment_downloads": 1,
 
@@ -525,7 +527,7 @@ class MusicPlayer:
 
 
     # =====================================================
-    # RESOLVE SONG - FIXED
+    # RESOLVE SONG
     # =====================================================
 
     async def resolve_song(
@@ -561,15 +563,13 @@ class MusicPlayer:
                     ]
 
                 # -----------------------------------------
-                # SEARCH
+                # FAST SEARCH
                 # -----------------------------------------
 
                 else:
 
-                    # Multiple search result pages.
                     targets = [
-                        f"ytsearch10:{query_text}",
-                        f"ytsearch20:{query_text}",
+                        f"ytsearch5:{query_text}"
                     ]
 
                 for target in targets:
@@ -614,9 +614,7 @@ class MusicPlayer:
                             if not entries:
                                 continue
 
-                            # Try several results instead
-                            # of blindly taking result #1.
-                            for entry in entries[:10]:
+                            for entry in entries[:5]:
 
                                 title = (
                                     entry.get("title")
@@ -632,7 +630,6 @@ class MusicPlayer:
 
                                 lower = title.lower()
 
-                                # Reject obvious non-music results.
                                 if any(
                                     bad in lower
                                     for bad in [
@@ -740,6 +737,7 @@ class MusicPlayer:
 
         def extract():
 
+            # FAST: working client first, fallback second
             strategies = [
 
                 {
@@ -753,18 +751,6 @@ class MusicPlayer:
                         "android_vr"
                     ]
                 },
-
-                {
-                    "player_client": [
-                        "tv"
-                    ]
-                },
-
-                {
-                    "player_client": [
-                        "android"
-                    ]
-                },
             ]
 
             for strategy_index, strategy in enumerate(
@@ -772,7 +758,8 @@ class MusicPlayer:
                 1
             ):
 
-                for attempt in range(1, 3):
+                # Only ONE attempt per strategy.
+                for attempt in range(1, 2):
 
                     try:
 
@@ -780,7 +767,7 @@ class MusicPlayer:
                             "[MUSIC] [STREAM] "
                             f"Strategy {strategy_index}/"
                             f"{len(strategies)} "
-                            f"Attempt {attempt}/2: "
+                            f"Attempt {attempt}/1: "
                             f"{song.title}"
                         )
 
@@ -928,7 +915,8 @@ class MusicPlayer:
                             repr(e)
                         )
 
-                        time.sleep(0.5)
+                        # Very small fallback delay.
+                        time.sleep(0.15)
 
             return None
 
@@ -939,15 +927,13 @@ class MusicPlayer:
 
 
     # =====================================================
-    # AUTOPLAY - COMPLETELY DIFFERENT
+    # AUTOPLAY
     # =====================================================
 
     async def autoplay_song(self):
 
         loop = asyncio.get_running_loop()
 
-        # Current song ke title ko search mein use NAHI
-        # karenge. Completely independent music.
         categories = [
 
             "popular Hindi songs",
@@ -1027,6 +1013,12 @@ class MusicPlayer:
 
                     candidates = []
 
+                    recent_urls = set(
+                        list(
+                            self.autoplay_history
+                        )[-30:]
+                    )
+
                     for entry in entries:
 
                         if not entry:
@@ -1056,16 +1048,8 @@ class MusicPlayer:
                         if not title:
                             continue
 
-                        # ---------------------------------
-                        # NEVER REPEAT URL
-                        # ---------------------------------
-
                         if url in used_urls:
                             continue
-
-                        # ---------------------------------
-                        # NEVER SAME CURRENT SONG
-                        # ---------------------------------
 
                         if self.current:
 
@@ -1076,22 +1060,8 @@ class MusicPlayer:
 
                                 continue
 
-                        # ---------------------------------
-                        # NEVER REPEAT RECENT AUTOPLAY
-                        # ---------------------------------
-
-                        recent_urls = set(
-                            list(
-                                self.autoplay_history
-                            )[-30:]
-                        )
-
                         if url in recent_urls:
                             continue
-
-                        # ---------------------------------
-                        # BAD VERSIONS
-                        # ---------------------------------
 
                         lower = title.lower()
 
@@ -1131,7 +1101,6 @@ class MusicPlayer:
                     if not candidates:
                         continue
 
-                    # Random different song.
                     random.shuffle(
                         candidates
                     )
@@ -1304,7 +1273,8 @@ class MusicPlayer:
 
                 stream = None
 
-                for attempt in range(1, 4):
+                # Reduced from 3 -> 2 attempts.
+                for attempt in range(1, 3):
 
                     stream = (
                         await self.get_audio_stream(
@@ -1317,11 +1287,11 @@ class MusicPlayer:
 
                     print(
                         "[MUSIC] [RETRY] "
-                        f"Stream {attempt}/3 failed."
+                        f"Stream {attempt}/2 failed."
                     )
 
                     await asyncio.sleep(
-                        0.7
+                        0.25
                     )
 
                 if not stream:
@@ -2045,7 +2015,8 @@ class Music(commands.Cog):
 
             if (
                 player.last_play_request
-                == request_key
+                ==
+                request_key
                 and
                 now
                 -
@@ -2619,4 +2590,3 @@ async def setup(bot):
     print(
         "[MUSIC] [OK] Music cog loaded successfully."
     )
-
