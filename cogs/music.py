@@ -72,7 +72,7 @@ if not OPUS_LOADED:
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))
-)
+) if __file__ else os.getcwd()
 
 
 # =========================================================
@@ -295,20 +295,6 @@ class MusicPlayer:
 
         # Playback state
         self.starting = False
-
-        # =================================================
-        # PLAYBACK GENERATION
-        # =================================================
-        #
-        # Every playback has a unique generation.
-        #
-        # If Skip happens:
-        #
-        # old generation = INVALID
-        #
-        # Therefore old FFmpeg callback can NEVER
-        # start another song.
-        #
 
         self.play_token = 0
 
@@ -1082,27 +1068,10 @@ class MusicPlayer:
         self
     ):
 
-        # =================================================
-        # IMPORTANT
-        # =================================================
-        #
-        # play_next DOES NOT recursively call itself.
-        #
-        # This prevents:
-        #
-        # Skip -> play_next -> failed -> play_next
-        # -> lock deadlock
-        #
-        # Instead, this function handles retries using
-        # a loop.
-        #
-
         async with self.play_lock:
 
-            if not self.voice:
-                return
-
-            if not self.voice.is_connected():
+            if not self.voice or not self.voice.is_connected():
+                self.starting = False
                 return
 
             if self.starting:
@@ -1118,10 +1087,7 @@ class MusicPlayer:
 
                 while True:
 
-                    if not self.voice:
-                        return
-
-                    if not self.voice.is_connected():
+                    if not self.voice or not self.voice.is_connected():
                         return
 
                     # -------------------------------------
@@ -1254,8 +1220,6 @@ class MusicPlayer:
                             song.title
                         )
 
-                        # If this song was manually queued,
-                        # just move to the next queue item.
                         if self.queue:
 
                             print(
@@ -1267,8 +1231,6 @@ class MusicPlayer:
 
                             continue
 
-                        # If autoplay is enabled, try
-                        # another autoplay song.
                         if self.autoplay:
 
                             print(
@@ -1276,8 +1238,6 @@ class MusicPlayer:
                                 "Trying another song."
                             )
 
-                            # Keep current temporarily so
-                            # autoplay resolver has context.
                             continue
 
                         self.current = None
@@ -1337,1385 +1297,215 @@ class MusicPlayer:
                                 repr(error)
                             )
 
-                        try:
+                        # Threadsafe execution to advance queue
+                        def advance():
+                            if token == self.play_token and not self.stopping:
+                                asyncio.create_task(self.play_next())
 
-                            asyncio.run_coroutine_threadsafe(
-                                self.finished(token),
-                                self.bot.loop
-                            )
+                        self.bot.loop.call_soon_threadsafe(advance)
 
-                        except Exception as e:
+                    self.voice.play(source, after=after_play)
 
-                            print(
-                                "[MUSIC] [ERROR] "
-                                "Finish callback:",
-                                repr(e)
-                            )
+                    # Update Voice Status & Text Channel Notice
+                    await self.update_voice_status(f"🎶 {song.title}")
 
-                    # -------------------------------------
-                    # FINAL TOKEN CHECK
-                    # -------------------------------------
-
-                    if token != self.play_token:
-
-                        print(
-                            "[MUSIC] [WARN] "
-                            "Old playback ignored."
+                    if self.text_channel:
+                        embed = discord.Embed(
+                            title="Now Playing",
+                            description=f"[{song.title}]({song.url})",
+                            color=discord.Color.blue()
                         )
-
+                        if song.thumbnail:
+                            embed.set_thumbnail(url=song.thumbnail)
+                        embed.set_footer(text=f"Requested by {song.requester.display_name}")
+                        
                         try:
-                            source.cleanup()
+                            await self.text_channel.send(embed=embed)
                         except Exception:
                             pass
 
-                        return
-
-                    # -------------------------------------
-                    # START
-                    # -------------------------------------
-
-                    try:
-
-                        self.voice.play(
-                            source,
-                            after=after_play
-                        )
-
-                    except Exception as e:
-
-                        print(
-                            "[MUSIC] [ERROR] "
-                            "voice.play failed:",
-                            repr(e)
-                        )
-
-                        try:
-                            source.cleanup()
-                        except Exception:
-                            pass
-
-                        # Try next song instead of getting stuck.
-                        if self.queue or self.autoplay:
-
-                            self.current = None
-
-                            continue
-
-                        return
-
-                    print(
-                        "[MUSIC] [PLAYING]:",
-                        song.title,
-                        "| token:",
-                        token
-                    )
-
-                    # -------------------------------------
-                    # VOICE STATUS
-                    # -------------------------------------
-
-                    await self.update_voice_status(
-                        f"🎵 {song.title}"
-                    )
-
-                    # -------------------------------------
-                    # NOW PLAYING
-                    # -------------------------------------
-
-                    await self.send_now_playing()
-
-                    return
-
-            except asyncio.CancelledError:
-
-                raise
-
-            except Exception as e:
-
-                print(
-                    "[MUSIC] [ERROR] "
-                    "Playback error:",
-                    repr(e)
-                )
+                    break
 
             finally:
-
                 self.starting = False
 
 
-    # =====================================================
-    # FINISHED
-    # =====================================================
-
-    async def finished(
-        self,
-        token
-    ):
-
-        # =================================================
-        # OLD CALLBACK = IGNORE
-        # =================================================
-
-        if token != self.play_token:
-
-            print(
-                "[MUSIC] [CALLBACK] "
-                "Old callback ignored:",
-                token,
-                "!=",
-                self.play_token
-            )
-
-            return
-
-        await asyncio.sleep(
-            0.15
-        )
-
-        # Another playback started
-        if token != self.play_token:
-            return
-
-        if (
-            not self.voice
-            or not self.voice.is_connected()
-        ):
-            return
-
-        # If another song is already playing,
-        # NEVER start another.
-        if (
-            self.voice.is_playing()
-            or self.voice.is_paused()
-        ):
-
-            return
-
-        print(
-            "[MUSIC] [FINISHED] "
-            "Starting next song."
-        )
-
-        await self.play_next()
-
-
-    # =====================================================
-    # NOW PLAYING
-    # =====================================================
-
-    async def send_now_playing(
-        self
-    ):
-
-        if (
-            not self.text_channel
-            or not self.current
-        ):
-            return
-
-        song = self.current
-
-        embed = discord.Embed(
-
-            title="🎵 HSL-CORP MUSIC",
-
-            description=(
-                "## 🎶 NOW PLAYING\n\n"
-                f"**[{song.title}]"
-                f"({song.url})**\n\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                f"👤 Requested by: "
-                f"{song.requester.mention}\n"
-                f"🔊 Volume: "
-                f"{int(self.volume * 100)}%\n"
-                f"🔁 Loop: "
-                f"{'🟢 ON' if self.loop else '🔴 OFF'}\n"
-                f"🤖 Autoplay: "
-                f"{'🟢 ON' if self.autoplay else '🔴 OFF'}\n"
-                "━━━━━━━━━━━━━━━━━━━━"
-            ),
-
-            color=discord.Color.blurple()
-        )
-
-        if song.thumbnail:
-
-            embed.set_image(
-                url=song.thumbnail
-            )
-
-        embed.set_thumbnail(
-            url=HSL_GIF
-        )
-
-        embed.set_footer(
-            text="HSL & CORPORATION • Music System"
-        )
-
-        view = MusicControlView(
-            self
-        )
-
-        try:
-
-            if self.now_playing_message:
-
-                await self.now_playing_message.edit(
-                    embed=embed,
-                    content=None,
-                    view=view
-                )
-
-            else:
-
-                self.now_playing_message = (
-                    await self.text_channel.send(
-                        embed=embed,
-                        view=view
-                    )
-                )
-
-        except discord.NotFound:
-
-            self.now_playing_message = None
-
-            try:
-
-                self.now_playing_message = (
-                    await self.text_channel.send(
-                        embed=embed,
-                        view=view
-                    )
-                )
-
-            except Exception as e:
-
-                print(
-                    "[MUSIC] [ERROR] "
-                    "Now playing resend:",
-                    repr(e)
-                )
-
-        except Exception as e:
-
-            print(
-                "[MUSIC] [ERROR] "
-                "Embed error:",
-                repr(e)
-            )
-
-
 # =========================================================
-# MUSIC BUTTONS
+# BOT DEFINITION & COMMANDS
 # =========================================================
 
-class MusicControlView(
-    discord.ui.View
-):
+intents = discord.Intents.default()
+intents.message_content = True
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-    def __init__(
-        self,
-        player
-    ):
+players = {}
 
-        super().__init__(
-            timeout=None
-        )
-
-        self.player = player
+def get_player(ctx):
+    if ctx.guild.id not in players:
+        players[ctx.guild.id] = MusicPlayer(bot)
+    return players[ctx.guild.id]
 
 
-    # =====================================================
-    # PAUSE / RESUME
-    # =====================================================
-
-    @discord.ui.button(
-        label="Pause",
-        emoji="⏯️",
-        style=discord.ButtonStyle.primary
-    )
-    async def pause_resume(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
-        voice = self.player.voice
-
-        if not voice:
-
-            return await interaction.response.send_message(
-                "❌ Music is not playing.",
-                ephemeral=True
-            )
-
-        if voice.is_playing():
-
-            voice.pause()
-
-            button.label = "Resume"
-
-            await interaction.response.edit_message(
-                view=self
-            )
-
-        elif voice.is_paused():
-
-            voice.resume()
-
-            button.label = "Pause"
-
-            await interaction.response.edit_message(
-                view=self
-            )
-
-        else:
-
-            await interaction.response.send_message(
-                "❌ Music is not playing.",
-                ephemeral=True
-            )
+@bot.event
+async def on_ready():
+    print(f"[BOT] [OK] Logged in as {bot.user} (ID: {bot.user.id})")
 
 
-    # =====================================================
-    # SKIP BUTTON
-    # =====================================================
+@bot.command(name="play", aliases=["p"])
+async def play(ctx, *, query: str):
+    """Play a song from YouTube or direct URL."""
+    if not ctx.author.voice:
+        return await ctx.send("❌ You must be in a voice channel to use this command!")
 
-    @discord.ui.button(
-        label="Skip",
-        emoji="⏭️",
-        style=discord.ButtonStyle.success
-    )
-    async def skip(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
+    player = get_player(ctx)
+    player.text_channel = ctx.channel
 
-        player = self.player
+    if not ctx.voice_client:
+        player.voice = await ctx.author.voice.channel.connect()
+    else:
+        player.voice = ctx.voice_client
 
-        if not player.voice:
+    async with ctx.typing():
+        song = await player.resolve_song(query, ctx.author)
 
-            return await interaction.response.send_message(
-                "❌ Music is not playing.",
-                ephemeral=True
-            )
+        if not song:
+            return await ctx.send("❌ Could not resolve song from query!")
 
-        await interaction.response.defer()
+        player.queue.append(song)
+        await ctx.send(f"🎵 Added **{song.title}** to the queue!")
 
-        # -----------------------------------------------
-        # PREVENT DOUBLE SKIP
-        # -----------------------------------------------
-
-        if player.skip_lock.locked():
-
-            try:
-
-                await interaction.followup.send(
-                    "⚠️ Skip already processing.",
-                    ephemeral=True
-                )
-
-            except Exception:
-                pass
-
-            return
-
-        async with player.skip_lock:
-
-            # -------------------------------------------
-            # INVALIDATE OLD CALLBACK FIRST
-            # -------------------------------------------
-
-            player.invalidate_playback()
-
-            player.starting = False
-
-            # -------------------------------------------
-            # STOP CURRENT AUDIO
-            # -------------------------------------------
-
-            if (
-                player.voice
-                and (
-                    player.voice.is_playing()
-                    or player.voice.is_paused()
-                )
-            ):
-
-                player.voice.stop()
-
-                await asyncio.sleep(
-                    0.08
-                )
-
-            # -------------------------------------------
-            # START NEXT
-            # -------------------------------------------
-
+        if not player.voice.is_playing() and not player.voice.is_paused():
             await player.play_next()
 
-        # -----------------------------------------------
-        # DELETE SKIP COMMAND MESSAGE IF POSSIBLE
-        # -----------------------------------------------
 
-        try:
+@bot.command(name="skip", aliases=["s"])
+async def skip(ctx):
+    """Skip the current song."""
+    player = get_player(ctx)
+    if not player.voice or not player.voice.is_connected():
+        return await ctx.send("❌ Not connected to a voice channel.")
 
-            if interaction.message:
-
-                # We DO NOT delete Now Playing message.
-                # Only interaction response is ephemeral,
-                # so nothing ugly remains in channel.
-
-                pass
-
-        except Exception:
-            pass
-
-
-    # =====================================================
-    # LOOP
-    # =====================================================
-
-    @discord.ui.button(
-        label="Loop",
-        emoji="🔁",
-        style=discord.ButtonStyle.secondary
-    )
-    async def loop(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
-        self.player.loop = (
-            not self.player.loop
-        )
-
-        status = (
-            "🟢 ON"
-            if self.player.loop
-            else "🔴 OFF"
-        )
-
-        await interaction.response.send_message(
-            f"🔁 Loop: **{status}**",
-            ephemeral=True
-        )
-
-        await self.player.send_now_playing()
-
-
-    # =====================================================
-    # AUTOPLAY
-    # =====================================================
-
-    @discord.ui.button(
-        label="Autoplay",
-        emoji="🤖",
-        style=discord.ButtonStyle.secondary
-    )
-    async def autoplay(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
-        self.player.autoplay = (
-            not self.player.autoplay
-        )
-
-        status = (
-            "🟢 ON"
-            if self.player.autoplay
-            else "🔴 OFF"
-        )
-
-        await interaction.response.send_message(
-            f"🤖 Autoplay: **{status}**",
-            ephemeral=True
-        )
-
-        await self.player.send_now_playing()
-
-
-    # =====================================================
-    # STOP
-    # =====================================================
-
-    @discord.ui.button(
-        label="Stop",
-        emoji="⏹️",
-        style=discord.ButtonStyle.danger
-    )
-    async def stop(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
-        await interaction.response.defer()
-
-        player = self.player
-
-        # -----------------------------------------------
-        # INVALIDATE EVERYTHING
-        # -----------------------------------------------
-
+    async with player.skip_lock:
         player.invalidate_playback()
+        if player.voice.is_playing() or player.voice.is_paused():
+            player.voice.stop()
+        await ctx.send("⏭️ Skipped current track.")
+        await player.play_next()
 
-        player.queue.clear()
 
-        player.current = None
+@bot.command(name="pause")
+async def pause(ctx):
+    """Pause playback."""
+    player = get_player(ctx)
+    if player.voice and player.voice.is_playing():
+        player.voice.pause()
+        await ctx.send("⏸️ Paused playback.")
 
-        player.starting = False
 
-        player.autoplay_history.clear()
+@bot.command(name="resume")
+async def resume(ctx):
+    """Resume playback."""
+    player = get_player(ctx)
+    if player.voice and player.voice.is_paused():
+        player.voice.resume()
+        await ctx.send("▶️ Resumed playback.")
 
-        player.play_history.clear()
 
-        # -----------------------------------------------
-        # STOP VOICE
-        # -----------------------------------------------
+@bot.command(name="stop")
+async def stop(ctx):
+    """Stop playing and clear queue."""
+    player = get_player(ctx)
+    player.stopping = True
+    player.invalidate_playback()
+    player.queue.clear()
+    player.current = None
 
-        if player.voice:
+    if player.voice:
+        if player.voice.is_playing() or player.voice.is_paused():
+            player.voice.stop()
+        await player.clear_voice_status()
 
-            await player.clear_voice_status()
+    player.stopping = False
+    await ctx.send("⏹️ Stopped playback and cleared the queue.")
 
-            if (
-                player.voice.is_playing()
-                or player.voice.is_paused()
-            ):
 
-                player.voice.stop()
+@bot.command(name="queue", aliases=["q"])
+async def queue_info(ctx):
+    """Displays queued tracks."""
+    player = get_player(ctx)
 
-                await asyncio.sleep(
-                    0.08
-                )
+    if not player.current and not player.queue:
+        return await ctx.send("📂 Queue is empty!")
 
-            try:
+    embed = discord.Embed(title="Current Music Queue", color=discord.Color.purple())
 
-                await player.voice.disconnect()
+    if player.current:
+        embed.add_field(name="Now Playing", value=f"[{player.current.title}]({player.current.url})", inline=False)
 
-            except Exception:
-                pass
+    if player.queue:
+        queue_list = "\n".join([f"`{i+1}.` [{s.title}]({s.url})" for i, s in enumerate(list(player.queue)[:10])])
+        embed.add_field(name="Up Next", value=queue_list, inline=False)
 
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="volume")
+async def volume(ctx, vol: int):
+    """Set playback volume (1-100)."""
+    if not 0 <= vol <= 100:
+        return await ctx.send("❌ Please enter a volume between 0 and 100.")
+
+    player = get_player(ctx)
+    player.volume = vol / 100.0
+
+    if player.voice and player.voice.source:
+        player.voice.source.volume = player.volume
+
+    await ctx.send(f"🔊 Volume set to {vol}%.")
+
+
+@bot.command(name="loop")
+async def loop(ctx):
+    """Toggle current song looping."""
+    player = get_player(ctx)
+    player.loop = not player.loop
+    state = "enabled" if player.loop else "disabled"
+    await ctx.send(f"🔂 Looping is now **{state}**.")
+
+
+@bot.command(name="autoplay")
+async def autoplay(ctx):
+    """Toggle autoplay mode when queue empties."""
+    player = get_player(ctx)
+    player.autoplay = not player.autoplay
+    state = "enabled" if player.autoplay else "disabled"
+    await ctx.send(f"📻 Autoplay is now **{state}**.")
+
+
+@bot.command(name="leave", aliases=["dc"])
+async def leave(ctx):
+    """Disconnect bot from voice channel."""
+    player = get_player(ctx)
+    player.stopping = True
+    player.invalidate_playback()
+    player.queue.clear()
+
+    if player.voice:
+        await player.clear_voice_status()
+        await player.voice.disconnect()
         player.voice = None
 
-        player.text_channel = None
-
-        player.now_playing_message = None
-
-        try:
-
-            await interaction.message.edit(
-                content=(
-                    "⏹️ **Music stopped & queue cleared.**"
-                ),
-                embed=None,
-                view=None
-            )
-
-        except Exception:
-            pass
+    player.stopping = False
+    await ctx.send("👋 Disconnected from voice channel.")
 
 
 # =========================================================
-# MUSIC COG
+# RUN BOT
 # =========================================================
 
-class Music(
-    commands.Cog
-):
-
-    def __init__(
-        self,
-        bot
-    ):
-
-        self.bot = bot
-
-        self.players = {}
-
-        self.play_command_locks = {}
-
-
-    # =====================================================
-    # GET PLAYER
-    # =====================================================
-
-    def get_player(
-        self,
-        guild_id
-    ):
-
-        if guild_id not in self.players:
-
-            self.players[guild_id] = (
-                MusicPlayer(self.bot)
-            )
-
-        return self.players[
-            guild_id
-        ]
-
-
-    # =====================================================
-    # GET PLAY LOCK
-    # =====================================================
-
-    def get_play_lock(
-        self,
-        guild_id
-    ):
-
-        if guild_id not in (
-            self.play_command_locks
-        ):
-
-            self.play_command_locks[
-                guild_id
-            ] = asyncio.Lock()
-
-        return self.play_command_locks[
-            guild_id
-        ]
-
-
-    # =====================================================
-    # PLAY
-    # =====================================================
-
-    @commands.hybrid_command(
-        name="play",
-        description="Play a YouTube song"
-    )
-    async def play(
-        self,
-        ctx,
-        *,
-        query: str
-    ):
-
-        if not ctx.guild:
-
-            return await ctx.send(
-                "❌ This command can only be used in a server.",
-                delete_after=4
-            )
-
-        if not ctx.author.voice:
-
-            return await ctx.send(
-                "❌ Please join a voice channel first.",
-                delete_after=4
-            )
-
-        player = self.get_player(
-            ctx.guild.id
-        )
-
-        lock = self.get_play_lock(
-            ctx.guild.id
-        )
-
-        async with lock:
-
-            voice_channel = (
-                ctx.author.voice.channel
-            )
-
-            request_key = (
-                f"{ctx.author.id}:"
-                f"{str(query).strip().lower()}"
-            )
-
-            current_time = (
-                time.monotonic()
-            )
-
-            if (
-                player.last_play_request
-                == request_key
-                and
-                current_time
-                -
-                player.last_play_request_time
-                < 3.0
-            ):
-
-                return await ctx.send(
-                    "⚠️ **Same play request already received.**",
-                    delete_after=3
-                )
-
-            player.last_play_request = (
-                request_key
-            )
-
-            player.last_play_request_time = (
-                current_time
-            )
-
-            # ---------------------------------------------
-            # TEXT CHANNEL
-            # ---------------------------------------------
-
-            if player.text_channel is None:
-
-                player.text_channel = (
-                    ctx.channel
-                )
-
-            elif (
-                player.current is None
-                and not player.voice
-            ):
-
-                player.text_channel = (
-                    ctx.channel
-                )
-
-            # ---------------------------------------------
-            # CONNECT VOICE
-            # ---------------------------------------------
-
-            try:
-
-                if ctx.voice_client:
-
-                    player.voice = (
-                        ctx.voice_client
-                    )
-
-                    if (
-                        player.voice.channel
-                        != voice_channel
-                    ):
-
-                        await player.voice.move_to(
-                            voice_channel
-                        )
-
-                else:
-
-                    player.voice = (
-                        await voice_channel.connect()
-                    )
-
-            except Exception as e:
-
-                print(
-                    "[MUSIC] [ERROR] "
-                    "Voice error:",
-                    repr(e)
-                )
-
-                return await ctx.send(
-                    "❌ Failed to connect to the voice channel.",
-                    delete_after=5
-                )
-
-            # ---------------------------------------------
-            # LOADING
-            # ---------------------------------------------
-
-            loading = await ctx.send(
-                "🔎 **Loading song...**"
-            )
-
-            song = (
-                await player.resolve_song(
-                    query,
-                    ctx.author
-                )
-            )
-
-            if not song:
-
-                try:
-
-                    await loading.edit(
-                        content=(
-                            "❌ **YouTube could not provide "
-                            "this song right now.**"
-                        )
-                    )
-
-                except Exception:
-                    pass
-
-                return
-
-            try:
-
-                await loading.delete()
-
-            except Exception:
-                pass
-
-            player.last_manual_query = (
-                str(query)
-            )
-
-            # ---------------------------------------------
-            # WAS PLAYING?
-            # ---------------------------------------------
-
-            was_playing = (
-                player.starting
-                or (
-                    player.voice
-                    and (
-                        player.voice.is_playing()
-                        or
-                        player.voice.is_paused()
-                    )
-                )
-                or
-                player.current is not None
-                or
-                len(player.queue) > 0
-            )
-
-            # ---------------------------------------------
-            # ADD MANUAL SONG TO HISTORY
-            # ---------------------------------------------
-
-            player.play_history.append(
-                song.url
-            )
-
-            # ---------------------------------------------
-            # QUEUE
-            # ---------------------------------------------
-
-            player.queue.append(
-                song
-            )
-
-            print(
-                "[MUSIC] [QUEUE] Added:",
-                song.title
-            )
-
-            # ---------------------------------------------
-            # ALREADY PLAYING
-            # ---------------------------------------------
-
-            if was_playing:
-
-                position = len(
-                    player.queue
-                )
-
-                embed = discord.Embed(
-
-                    title="🎵 ADDED TO QUEUE",
-
-                    description=(
-                        f"**[{song.title}]"
-                        f"({song.url})**\n\n"
-                        f"👤 "
-                        f"{ctx.author.mention}\n"
-                        f"📍 Position: "
-                        f"`{position}`"
-                    ),
-
-                    color=discord.Color.green()
-                )
-
-                if song.thumbnail:
-
-                    embed.set_image(
-                        url=song.thumbnail
-                    )
-
-                embed.set_thumbnail(
-                    url=HSL_GIF
-                )
-
-                return await ctx.send(
-                    embed=embed,
-                    delete_after=8
-                )
-
-            # ---------------------------------------------
-            # START
-            # ---------------------------------------------
-
-            await player.play_next()
-
-            await asyncio.sleep(
-                0.5
-            )
-
-            if (
-                player.voice
-                and
-                not player.voice.is_playing()
-                and
-                not player.starting
-                and
-                player.current
-            ):
-
-                await ctx.send(
-                    "❌ **Audio failed to start.**",
-                    delete_after=6
-                )
-
-
-    # =====================================================
-    # SKIP
-    # =====================================================
-
-    @commands.hybrid_command(
-        name="skip",
-        description="Skip current song"
-    )
-    async def skip(
-        self,
-        ctx
-    ):
-
-        if not ctx.guild:
-
-            return await ctx.send(
-                "❌ Server only.",
-                delete_after=3
-            )
-
-        player = self.get_player(
-            ctx.guild.id
-        )
-
-        if not player.voice:
-
-            return await ctx.send(
-                "❌ Music is not playing.",
-                delete_after=4
-            )
-
-        if player.skip_lock.locked():
-
-            return await ctx.send(
-                "⚠️ **Skip already processing.**",
-                delete_after=3
-            )
-
-        async with player.skip_lock:
-
-            # ---------------------------------------------
-            # INVALIDATE OLD CALLBACK IMMEDIATELY
-            # ---------------------------------------------
-
-            player.invalidate_playback()
-
-            # ---------------------------------------------
-            # STOP OLD AUDIO
-            # ---------------------------------------------
-
-            if (
-                player.voice.is_playing()
-                or
-                player.voice.is_paused()
-            ):
-
-                player.voice.stop()
-
-                await asyncio.sleep(
-                    0.08
-                )
-
-            player.starting = False
-
-            # ---------------------------------------------
-            # START NEXT
-            # ---------------------------------------------
-
-            await player.play_next()
-
-        # ---------------------------------------------
-        # IMPORTANT:
-        # Don't leave a "Skipped" message.
-        # ---------------------------------------------
-
-        try:
-
-            await ctx.message.delete()
-
-        except Exception:
-
-            try:
-
-                # For slash command there may be
-                # no message to delete.
-                await ctx.send(
-                    "⏭️ **Skipped.**",
-                    delete_after=2
-                )
-
-            except Exception:
-                pass
-
-
-    # =====================================================
-    # PAUSE
-    # =====================================================
-
-    @commands.hybrid_command(
-        name="pause",
-        description="Pause music"
-    )
-    async def pause(
-        self,
-        ctx
-    ):
-
-        player = self.get_player(
-            ctx.guild.id
-        )
-
-        if (
-            player.voice
-            and
-            player.voice.is_playing()
-        ):
-
-            player.voice.pause()
-
-            return await ctx.send(
-                "⏸️ **Music paused.**",
-                delete_after=3
-            )
-
-        await ctx.send(
-            "❌ Music is not playing.",
-            delete_after=3
-        )
-
-
-    # =====================================================
-    # RESUME
-    # =====================================================
-
-    @commands.hybrid_command(
-        name="resume",
-        description="Resume music"
-    )
-    async def resume(
-        self,
-        ctx
-    ):
-
-        player = self.get_player(
-            ctx.guild.id
-        )
-
-        if (
-            player.voice
-            and
-            player.voice.is_paused()
-        ):
-
-            player.voice.resume()
-
-            return await ctx.send(
-                "▶️ **Music resumed.**",
-                delete_after=3
-            )
-
-        await ctx.send(
-            "❌ Music is not paused.",
-            delete_after=3
-        )
-
-
-    # =====================================================
-    # STOP
-    # =====================================================
-
-    @commands.hybrid_command(
-        name="stop",
-        description="Stop music"
-    )
-    async def stop(
-        self,
-        ctx
-    ):
-
-        player = self.get_player(
-            ctx.guild.id
-        )
-
-        player.invalidate_playback()
-
-        player.queue.clear()
-
-        player.current = None
-
-        player.starting = False
-
-        player.autoplay_history.clear()
-
-        player.play_history.clear()
-
-        if player.voice:
-
-            await player.clear_voice_status()
-
-            if (
-                player.voice.is_playing()
-                or
-                player.voice.is_paused()
-            ):
-
-                player.voice.stop()
-
-                await asyncio.sleep(
-                    0.08
-                )
-
-            try:
-
-                await player.voice.disconnect()
-
-            except Exception:
-                pass
-
-        player.voice = None
-
-        player.text_channel = None
-
-        player.now_playing_message = None
-
-        await ctx.send(
-            "⏹️ **Music stopped & queue cleared.**",
-            delete_after=4
-        )
-
-
-    # =====================================================
-    # QUEUE
-    # =====================================================
-
-    @commands.hybrid_command(
-        name="queue",
-        description="Show music queue"
-    )
-    async def queue(
-        self,
-        ctx
-    ):
-
-        player = self.get_player(
-            ctx.guild.id
-        )
-
-        if not player.queue:
-
-            return await ctx.send(
-                "📭 **Queue is empty.**",
-                delete_after=4
-            )
-
-        lines = []
-
-        for index, song in enumerate(
-            list(player.queue)[:15],
-            1
-        ):
-
-            lines.append(
-                f"`{index}.` "
-                f"**{song.title[:70]}**"
-            )
-
-        embed = discord.Embed(
-
-            title="📜 HSL-CORP MUSIC QUEUE",
-
-            description="\n".join(
-                lines
-            ),
-
-            color=discord.Color.blurple()
-        )
-
-        embed.set_thumbnail(
-            url=HSL_GIF
-        )
-
-        await ctx.send(
-            embed=embed
-        )
-
-
-    # =====================================================
-    # VOLUME
-    # =====================================================
-
-    @commands.hybrid_command(
-        name="volume",
-        description="Change music volume"
-    )
-    async def volume(
-        self,
-        ctx,
-        amount: int
-    ):
-
-        if amount < 0 or amount > 200:
-
-            return await ctx.send(
-                "❌ Volume must be between `0` and `200`.",
-                delete_after=4
-            )
-
-        player = self.get_player(
-            ctx.guild.id
-        )
-
-        player.volume = (
-            amount / 100
-        )
-
-        if player.voice:
-
-            source = (
-                player.voice.source
-            )
-
-            if isinstance(
-                source,
-                discord.PCMVolumeTransformer
-            ):
-
-                source.volume = (
-                    amount / 100
-                )
-
-        await ctx.send(
-            f"🔊 **Volume set to {amount}%**",
-            delete_after=4
-        )
-
-
-    # =====================================================
-    # LOOP
-    # =====================================================
-
-    @commands.hybrid_command(
-        name="loop",
-        description="Toggle loop"
-    )
-    async def loop(
-        self,
-        ctx
-    ):
-
-        player = self.get_player(
-            ctx.guild.id
-        )
-
-        player.loop = (
-            not player.loop
-        )
-
-        status = (
-            "🟢 ON"
-            if player.loop
-            else "🔴 OFF"
-        )
-
-        await ctx.send(
-            f"🔁 **Loop: {status}**",
-            delete_after=4
-        )
-
-
-    # =====================================================
-    # AUTOPLAY
-    # =====================================================
-
-    @commands.hybrid_command(
-        name="autoplay",
-        description="Toggle autoplay"
-    )
-    async def autoplay(
-        self,
-        ctx
-    ):
-
-        player = self.get_player(
-            ctx.guild.id
-        )
-
-        player.autoplay = (
-            not player.autoplay
-        )
-
-        status = (
-            "🟢 ON"
-            if player.autoplay
-            else "🔴 OFF"
-        )
-
-        await ctx.send(
-            f"🤖 **Autoplay: {status}**",
-            delete_after=4
-        )
-
-        if (
-            player.autoplay
-            and player.voice
-            and player.current
-            and not player.voice.is_playing()
-            and not player.voice.is_paused()
-        ):
-
-            await player.play_next()
-
-
-    # =====================================================
-    # NOW PLAYING
-    # =====================================================
-
-    @commands.hybrid_command(
-        name="nowplaying",
-        description="Show current song"
-    )
-    async def nowplaying(
-        self,
-        ctx
-    ):
-
-        player = self.get_player(
-            ctx.guild.id
-        )
-
-        if not player.current:
-
-            return await ctx.send(
-                "❌ Nothing is playing.",
-                delete_after=4
-            )
-
-        await player.send_now_playing()
-
-
-# =========================================================
-# SETUP
-# =========================================================
-
-async def setup(bot):
-
-    await bot.add_cog(
-        Music(bot)
-    )
-
-    print(
-        "[MUSIC] [OK] "
-        "Music cog loaded successfully."
-    )
+if __name__ == "__main__":
+    TOKEN = os.getenv("DISCORD_TOKEN")
+    if TOKEN:
+        bot.run(TOKEN)
+    else:
+        print("[MUSIC] [ERROR] DISCORD_TOKEN environment variable not set.")
