@@ -12,7 +12,7 @@ from discord.ext import commands
 import yt_dlp
 
 # =========================================================
-# HSL-CORP ULTRA FAST & FIXED MUSIC SYSTEM
+# HSL-CORP FIXED & FAST MUSIC SYSTEM
 # =========================================================
 
 def load_opus():
@@ -77,30 +77,13 @@ def find_ffmpeg():
 
 FFMPEG_PATH = find_ffmpeg()
 
-YTDLP_OPTIONS = {
-    "format": "bestaudio/best",
-    "quiet": True,
-    "no_warnings": True,
-    "noplaylist": True,
-    "source_address": "0.0.0.0",
-    "socket_timeout": 10,
-    "retries": 3,
-    "default_search": "ytsearch",
-    "http_headers": {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/151.0.0.0 Safari/537.36"
-        ),
-    },
-}
-
 class Song:
-    def __init__(self, title, url, thumbnail, requester):
+    def __init__(self, title, url, thumbnail, requester, stream_url=None):
         self.title = title
         self.url = url
         self.thumbnail = thumbnail
         self.requester = requester
+        self.stream_url = stream_url
 
 
 class MusicButtons(discord.ui.View):
@@ -189,10 +172,23 @@ class MusicPlayer(commands.Cog):
             pass
 
     def get_ytdlp_options(self):
-        options = dict(YTDLP_OPTIONS)
+        opts = {
+            "format": "bestaudio/best",
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
+            "source_address": "0.0.0.0",
+            "socket_timeout": 15,
+            "default_search": "ytsearch",
+            "nocheckcertificate": True,
+            "geo_bypass": True,
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+        }
         if COOKIE_FILE and os.path.isfile(COOKIE_FILE):
-            options["cookiefile"] = COOKIE_FILE
-        return options
+            opts["cookiefile"] = COOKIE_FILE
+        return opts
 
     async def resolve_song(self, search_query, requester):
         loop = asyncio.get_running_loop()
@@ -201,9 +197,9 @@ class MusicPlayer(commands.Cog):
             if not query:
                 return None
             target = query if query.startswith(("http://", "https://")) else f"ytsearch1:{query}"
+            opts = self.get_ytdlp_options()
             try:
-                options = self.get_ytdlp_options()
-                with yt_dlp.YoutubeDL(options) as ydl:
+                with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(target, download=False)
                 if not info:
                     return None
@@ -212,34 +208,39 @@ class MusicPlayer(commands.Cog):
                     if not entries:
                         return None
                     info = entries[0]
+                
+                title = info.get("title", "Unknown Song")
+                webpage_url = info.get("webpage_url") or info.get("url") or f"https://www.youtube.com/watch?v={info.get('id')}"
+                thumbnail = info.get("thumbnail")
+                stream_url = info.get("url")
+                
                 return {
-                    "title": info.get("title", "Unknown Song"),
-                    "url": info.get("webpage_url") or info.get("url"),
-                    "thumbnail": info.get("thumbnail"),
-                    "stream_url": info.get("url")
+                    "title": title,
+                    "url": webpage_url,
+                    "thumbnail": thumbnail,
+                    "stream_url": stream_url
                 }
             except Exception as e:
                 print(f"[MUSIC] Resolve Error: {e}")
                 return None
+
         data = await loop.run_in_executor(None, extract)
         if not data:
             return None
-        song = Song(data["title"], data["url"], data["thumbnail"], requester)
-        song.stream_url = data["stream_url"]
-        return song
+        return Song(data["title"], data["url"], data["thumbnail"], requester, stream_url=data["stream_url"])
 
     async def resolve_autoplay_song(self):
         if not self.current:
             return None
         loop = asyncio.get_running_loop()
         requester = self.current.requester
-        queries = ["Hindi songs", "Bollywood romantic songs", "Trending music"]
+        queries = ["Hindi songs", "Bollywood romantic songs", "Trending music hits"]
         query = random.choice(queries)
 
         def extract():
-            options = self.get_ytdlp_options()
+            opts = self.get_ytdlp_options()
             try:
-                with yt_dlp.YoutubeDL(options) as ydl:
+                with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(f"ytsearch5:{query}", download=False)
                 if not info or "entries" not in info:
                     return None
@@ -260,8 +261,7 @@ class MusicPlayer(commands.Cog):
         data = await loop.run_in_executor(None, extract)
         if not data:
             return None
-        song = Song(data["title"], data["url"], data["thumbnail"], requester)
-        song.stream_url = data["stream_url"]
+        song = Song(data["title"], data["url"], data["thumbnail"], requester, stream_url=data["stream_url"])
         self.autoplay_history.append(song.url)
         return song
 
@@ -299,7 +299,7 @@ class MusicPlayer(commands.Cog):
                         self.voice.stop()
                         await asyncio.sleep(0.1)
 
-                    stream_url = song.stream_url if hasattr(song, "stream_url") else None
+                    stream_url = song.stream_url
                     if not stream_url:
                         res = await self.resolve_song(song.url, song.requester)
                         if res:
@@ -308,10 +308,7 @@ class MusicPlayer(commands.Cog):
                     if not stream_url or token != self.play_token:
                         continue
 
-                    before_options = (
-                        "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 2 "
-                        "-probesize 32000 -analyzeduration 0"
-                    )
+                    before_options = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 2 -probesize 32000 -analyzeduration 0"
                     ffmpeg_options = "-vn -loglevel error"
 
                     try:
@@ -357,8 +354,7 @@ class MusicPlayer(commands.Cog):
             finally:
                 self.starting = False
 
-    # Hybrid Support (Works with prefix `!play` AND slash `/play`)
-    @commands.hybrid_command(name="play", description="Play any song from YouTube")
+    @commands.hybrid_command(name="play", aliases=["p"], description="Play any song from YouTube")
     async def play(self, ctx, *, query: str):
         if not ctx.author.voice:
             return await ctx.send("❌ Channel Join Karo Pehle!")
@@ -372,16 +368,19 @@ class MusicPlayer(commands.Cog):
         else:
             self.voice = ctx.voice_client
 
+        msg = await ctx.send("🔍 Searching song...")
         song = await self.resolve_song(query, ctx.author)
+        
         if not song:
-            return await ctx.send("❌ Song Nahi Mila!")
+            return await msg.edit(content="❌ **Song Nahi Mila!** Please check song name or YouTube link.")
 
         self.queue.append(song)
-        await ctx.send(f"🎵 Added **{song.title}** to queue!")
+        await msg.edit(content=f"🎵 Added **{song.title}** to queue!")
+        
         if not self.voice.is_playing() and not self.voice.is_paused():
             await self.play_next()
 
-    @commands.hybrid_command(name="skip", description="Skip the currently playing song")
+    @commands.hybrid_command(name="skip", aliases=["s"], description="Skip current song")
     async def skip(self, ctx):
         if not self.voice or not self.voice.is_connected():
             return await ctx.send("❌ Bot VC mein nahi hai.")
@@ -396,13 +395,13 @@ class MusicPlayer(commands.Cog):
         self.autoplay = not self.autoplay
         await ctx.send(f"📻 Autoplay **{'enabled' if self.autoplay else 'disabled'}**.")
 
-    @commands.hybrid_command(name="pause", description="Pause current music")
+    @commands.hybrid_command(name="pause", description="Pause music")
     async def pause(self, ctx):
         if self.voice and self.voice.is_playing():
             self.voice.pause()
             await ctx.send("⏸️ Paused.")
 
-    @commands.hybrid_command(name="resume", description="Resume paused music")
+    @commands.hybrid_command(name="resume", description="Resume music")
     async def resume(self, ctx):
         if self.voice and self.voice.is_paused():
             self.voice.resume()
@@ -419,7 +418,7 @@ class MusicPlayer(commands.Cog):
             await self.clear_voice_status()
         await ctx.send("⏹️ Stopped.")
 
-    @commands.hybrid_command(name="leave", description="Disconnect bot from VC")
+    @commands.hybrid_command(name="leave", aliases=["dc"], description="Disconnect bot")
     async def leave(self, ctx):
         self.invalidate_playback()
         self.queue.clear()
