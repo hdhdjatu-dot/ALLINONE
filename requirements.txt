@@ -1,8 +1,8 @@
-discord.py[voice]
-python-dotenv
-PyNaCl
+discord.py[voice]>=2.7.1
+PyNaCl>=1.5.0
 yt-dlp[default]
 aiohttp>=3.9.0
+python-dotenv
 davey
 ffmpeg-python
 Flask>=2.3.2
