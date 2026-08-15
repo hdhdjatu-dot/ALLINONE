@@ -1,6 +1,10 @@
 discord.py[voice]
 python-dotenv
 PyNaCl
-yt-dlp[default]
+yt-dlp>=2024.00.00
 davey
 ffmpeg-python
+Flask>=2.3.2
+aiohttp>=3.8.4
+waitress>=2.1.2
+wavelink
