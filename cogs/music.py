@@ -268,7 +268,11 @@ class Song:
 # MUSIC PLAYER
 # =========================================================
 
-class MusicPlayer:
+# Purana (Galat):
+# class MusicPlayer:
+
+# Naya (Sahi):
+class MusicPlayer(commands.Cog):
 
     def __init__(self, bot):
 
