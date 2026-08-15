@@ -18,7 +18,6 @@ DATA_FILE = "security_data.json"
 # BOT OWNERS
 # ============================================================
 
-# Discord USER IDs
 BOT_OWNER_IDS = {
     1519933809402056805,
     1435943252455981080,
@@ -30,18 +29,6 @@ BOT_OWNER_IDS = {
 # ============================================================
 # OWNER ROLE IDS
 # ============================================================
-#
-# Anyone having one of these roles can use OWNER commands.
-#
-# You can add more role IDs here.
-#
-# Example:
-#
-# OWNER_ROLE_IDS = {
-#     1451197118025826364,
-#     123456789012345678,
-# }
-#
 
 OWNER_ROLE_IDS = {
     1451197118025826364,
@@ -59,8 +46,17 @@ DEFAULT_SETTINGS = {
     "antimod": True,
     "antispam": True,
     "duplicate": True,
+
     "whitelist_music": [],
     "whitelist_bots": [],
+
+    # ========================================================
+    # GALI / PROFANITY SYSTEM
+    # ========================================================
+
+    "gali_enabled": True,
+
+    "gali_words": [],
 }
 
 
@@ -115,7 +111,8 @@ def save_data(data):
             json.dump(
                 data,
                 f,
-                indent=4
+                indent=4,
+                ensure_ascii=False
             )
 
     except Exception as e:
@@ -188,7 +185,9 @@ class Security(commands.Cog):
 
                 changed = True
 
-        # Normalize music whitelist
+        # ====================================================
+        # MUSIC WHITELIST
+        # ====================================================
 
         if not isinstance(
             settings.get("whitelist_music"),
@@ -215,12 +214,18 @@ class Security(commands.Cog):
 
                 changed = True
 
+        cleaned_music = list(
+            dict.fromkeys(cleaned_music)
+        )
+
         if cleaned_music != settings["whitelist_music"]:
 
             settings["whitelist_music"] = cleaned_music
             changed = True
 
-        # Normalize bot whitelist
+        # ====================================================
+        # BOT WHITELIST
+        # ====================================================
 
         if not isinstance(
             settings.get("whitelist_bots"),
@@ -254,6 +259,55 @@ class Security(commands.Cog):
         if cleaned_bots != settings["whitelist_bots"]:
 
             settings["whitelist_bots"] = cleaned_bots
+            changed = True
+
+        # ====================================================
+        # GALI WORDS
+        # ====================================================
+
+        if not isinstance(
+            settings.get("gali_words"),
+            list
+        ):
+
+            settings["gali_words"] = []
+            changed = True
+
+        cleaned_gali = []
+
+        for word in settings["gali_words"]:
+
+            if not isinstance(word, str):
+                changed = True
+                continue
+
+            word = word.strip().lower()
+
+            if not word:
+                changed = True
+                continue
+
+            cleaned_gali.append(word)
+
+        cleaned_gali = list(
+            dict.fromkeys(cleaned_gali)
+        )
+
+        if cleaned_gali != settings["gali_words"]:
+
+            settings["gali_words"] = cleaned_gali
+            changed = True
+
+        # ====================================================
+        # GALI ENABLE
+        # ====================================================
+
+        if not isinstance(
+            settings.get("gali_enabled"),
+            bool
+        ):
+
+            settings["gali_enabled"] = True
             changed = True
 
         if changed:
@@ -311,7 +365,6 @@ class Security(commands.Cog):
         for role in member.roles:
 
             if role.id in OWNER_ROLE_IDS:
-
                 return True
 
         return False
@@ -320,13 +373,6 @@ class Security(commands.Cog):
     # ========================================================
     # MASTER OWNER CHECK
     # ========================================================
-    #
-    # Allowed:
-    #
-    # 1. Server owner
-    # 2. Bot owner
-    # 3. User having configured owner role
-    #
 
     async def is_owner(
         self,
@@ -403,6 +449,34 @@ class Security(commands.Cog):
 
 
     # ========================================================
+    # GALI WORD MATCHER
+    # ========================================================
+
+    def contains_gali(
+        self,
+        content,
+        gali_words
+    ):
+
+        if not content:
+            return None
+
+        content_lower = content.lower()
+
+        for word in gali_words:
+
+            word = str(word).strip().lower()
+
+            if not word:
+                continue
+
+            if word in content_lower:
+                return word
+
+        return None
+
+
+    # ========================================================
     # SECURITY ANIMATION
     # ========================================================
 
@@ -445,15 +519,14 @@ class Security(commands.Cog):
             ("☢️", "ANTI-NUKE", "antinuke"),
             ("🔨", "ANTI-MOD", "antimod"),
             ("💬", "ANTI-SPAM", "antispam"),
-            ("♻️", "DUPLICATE GUARD", "duplicate")
+            ("♻️", "DUPLICATE GUARD", "duplicate"),
+            ("🤬", "GALI FILTER", "gali_enabled"),
 
         ]
 
         settings = self.get_settings(
             ctx.guild.id
         )
-
-        # INTRO
 
         for i in range(10):
 
@@ -505,9 +578,7 @@ class Security(commands.Cog):
                 )
             )
 
-            await asyncio.sleep(
-                0.16
-            )
+            await asyncio.sleep(0.16)
 
         completed = []
 
@@ -610,15 +681,11 @@ class Security(commands.Cog):
                     )
                 )
 
-                await asyncio.sleep(
-                    0.13
-                )
+                await asyncio.sleep(0.13)
 
             settings[key] = enabled
 
-            save_data(
-                self.data
-            )
+            save_data(self.data)
 
             completed.append(
                 (
@@ -674,9 +741,7 @@ class Security(commands.Cog):
                 )
             )
 
-            await asyncio.sleep(
-                0.45
-            )
+            await asyncio.sleep(0.45)
 
         final_text = (
             "SYSTEM ONLINE"
@@ -716,6 +781,7 @@ class Security(commands.Cog):
                     "║       ✓ ANTI-MOD             ║\n"
                     "║       ✓ ANTI-SPAM            ║\n"
                     "║       ✓ DUPLICATE GUARD      ║\n"
+                    "║       ✓ GALI FILTER          ║\n"
 
                     "║                              ║\n"
 
@@ -731,9 +797,7 @@ class Security(commands.Cog):
                 )
             )
 
-            await asyncio.sleep(
-                0.18
-            )
+            await asyncio.sleep(0.18)
 
         await asyncio.sleep(5)
 
@@ -758,7 +822,6 @@ class Security(commands.Cog):
     ):
 
         if not await self.is_owner(ctx.author):
-
             return await self.owner_only_message(ctx)
 
         await self.security_animation(
@@ -782,12 +845,251 @@ class Security(commands.Cog):
     ):
 
         if not await self.is_owner(ctx.author):
-
             return await self.owner_only_message(ctx)
 
         await self.security_animation(
             ctx,
             False
+        )
+
+
+    # ========================================================
+    # ADD GALI
+    # ========================================================
+
+    @commands.hybrid_command(
+        name="addgali",
+        description="Add a word to the HSL-CORP gali filter"
+    )
+    @commands.guild_only()
+    async def addgali(
+        self,
+        ctx,
+        *,
+        word: str
+    ):
+
+        if not await self.is_owner(ctx):
+            return await self.owner_only_message(ctx)
+
+        word = word.strip().lower()
+
+        if not word:
+            return await ctx.send(
+                "❌ **Gali word empty nahi ho sakta.**",
+                delete_after=5
+            )
+
+        if len(word) > 100:
+            return await ctx.send(
+                "❌ Word bahut long hai.",
+                delete_after=5
+            )
+
+        settings = self.get_settings(
+            ctx.guild.id
+        )
+
+        words = settings.setdefault(
+            "gali_words",
+            []
+        )
+
+        if word in words:
+            return await ctx.send(
+                f"🟡 `{word}` **already gali filter mein hai.**",
+                delete_after=5
+            )
+
+        words.append(word)
+
+        settings["gali_words"] = list(
+            dict.fromkeys(words)
+        )
+
+        save_data(self.data)
+
+        await ctx.send(
+            f"🤬 `{word}` **gali filter mein add ho gaya.**\n"
+            "🛡️ Ab ye word detect hote hi message remove hoga "
+            "aur user ko timeout milega.",
+            delete_after=7
+        )
+
+
+    # ========================================================
+    # REMOVE GALI
+    # ========================================================
+
+    @commands.hybrid_command(
+        name="removegali",
+        description="Remove a word from the gali filter"
+    )
+    @commands.guild_only()
+    async def removegali(
+        self,
+        ctx,
+        *,
+        word: str
+    ):
+
+        if not await self.is_owner(ctx):
+            return await self.owner_only_message(ctx)
+
+        word = word.strip().lower()
+
+        settings = self.get_settings(
+            ctx.guild.id
+        )
+
+        words = settings.setdefault(
+            "gali_words",
+            []
+        )
+
+        if word not in words:
+
+            return await ctx.send(
+                f"🟡 `{word}` **gali filter mein nahi hai.**",
+                delete_after=5
+            )
+
+        words.remove(word)
+
+        save_data(self.data)
+
+        await ctx.send(
+            f"🔴 `{word}` **gali filter se remove ho gaya.**",
+            delete_after=6
+        )
+
+
+    # ========================================================
+    # GALI LIST
+    # ========================================================
+
+    @commands.hybrid_command(
+        name="gali",
+        description="Show or clear the HSL-CORP gali filter"
+    )
+    @commands.guild_only()
+    async def gali(
+        self,
+        ctx,
+        action: str = "list"
+    ):
+
+        if not await self.is_owner(ctx):
+            return await self.owner_only_message(ctx)
+
+        action = str(
+            action
+        ).lower().strip()
+
+        settings = self.get_settings(
+            ctx.guild.id
+        )
+
+        words = settings.get(
+            "gali_words",
+            []
+        )
+
+        # ====================================================
+        # CLEAR
+        # ====================================================
+
+        if action in (
+            "clear",
+            "delete",
+            "reset"
+        ):
+
+            if not words:
+
+                return await ctx.send(
+                    "🟡 **Gali filter already empty hai.**",
+                    delete_after=5
+                )
+
+            count = len(words)
+
+            settings["gali_words"] = []
+
+            save_data(self.data)
+
+            return await ctx.send(
+                f"🗑️ **{count} gali words remove kar diye gaye.**",
+                delete_after=6
+            )
+
+        # ====================================================
+        # LIST
+        # ====================================================
+
+        if not words:
+
+            embed = discord.Embed(
+                title="🤬 HSL-CORP GALI FILTER",
+                description=(
+                    "Abhi koi custom gali word add nahi hai.\n\n"
+                    "Add karne ke liye:\n"
+                    "`/addgali word`"
+                ),
+                color=discord.Color.orange()
+            )
+
+            return await ctx.send(
+                embed=embed
+            )
+
+        lines = []
+
+        for index, word in enumerate(
+            words,
+            start=1
+        ):
+
+            lines.append(
+                f"**{index}.** `{word}`"
+            )
+
+        embed = discord.Embed(
+            title="🤬 HSL-CORP GALI FILTER",
+            description="\n".join(lines),
+            color=discord.Color.red()
+        )
+
+        embed.add_field(
+            name="Commands",
+            value=(
+                "`/addgali word`\n"
+                "`/removegali word`\n"
+                "`/gali clear`"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="Status",
+            value=(
+                "🟢 **Enabled**"
+                if settings.get(
+                    "gali_enabled",
+                    True
+                )
+                else
+                "🔴 **Disabled**"
+            ),
+            inline=False
+        )
+
+        embed.set_footer(
+            text="HSL-CORP • Gali Protection"
+        )
+
+        await ctx.send(
+            embed=embed
         )
 
 
@@ -840,6 +1142,9 @@ class Security(commands.Cog):
                 f"║ ♻️ Duplicate      "
                 f"{'🟢 ON' if settings['duplicate'] else '🔴 OFF'} ║\n"
 
+                f"║ 🤬 Gali Filter    "
+                f"{'🟢 ON' if settings['gali_enabled'] else '🔴 OFF'} ║\n"
+
                 "╚══════════════════════════╝\n"
 
                 "\u001b[0m"
@@ -847,6 +1152,19 @@ class Security(commands.Cog):
             ),
 
             color=discord.Color.dark_green()
+        )
+
+        embed.add_field(
+            name="🤬 Custom Gali Words",
+            value=str(
+                len(
+                    settings.get(
+                        "gali_words",
+                        []
+                    )
+                )
+            ),
+            inline=True
         )
 
         embed.set_footer(
@@ -874,7 +1192,6 @@ class Security(commands.Cog):
     ):
 
         if not await self.is_owner(ctx.author):
-
             return await self.owner_only_message(ctx)
 
         if amount < 1 or amount > 100:
@@ -885,9 +1202,6 @@ class Security(commands.Cog):
             )
 
         try:
-
-            # For slash command there is no source message.
-            # For prefix command, delete the command too.
 
             limit = amount
 
@@ -950,10 +1264,7 @@ class Security(commands.Cog):
         text: str
     ):
 
-        # HARD OWNER CHECK
-
         if not await self.is_owner(ctx.author):
-
             return await self.owner_only_message(ctx)
 
         if not text or not text.strip():
@@ -968,17 +1279,10 @@ class Security(commands.Cog):
 
         try:
 
-            # Send BOT message first.
-
             await ctx.send(
                 text,
                 allowed_mentions=discord.AllowedMentions.none()
             )
-
-            # Delete only prefix command.
-            #
-            # Discord API slash commands do not create
-            # a normal message, so this only applies to !say.
 
             if ctx.message:
 
@@ -999,13 +1303,6 @@ class Security(commands.Cog):
             except Exception:
                 pass
 
-        except discord.HTTPException as e:
-
-            print(
-                "[SECURITY] SAY HTTP ERROR:",
-                repr(e)
-            )
-
         except Exception as e:
 
             print(
@@ -1017,21 +1314,6 @@ class Security(commands.Cog):
     # ========================================================
     # WHITELIST BOT
     # ========================================================
-    #
-    # Usage:
-    #
-    # !whitelistbot @Bot
-    #
-    # !whitelistbot @Bot remove
-    #
-    # /whitelistbot bot:@Bot
-    #
-    # ONLY:
-    #
-    # Server Owner
-    # Bot Owner
-    # Owner Role
-    #
 
     @commands.hybrid_command(
         name="whitelistbot",
@@ -1046,7 +1328,6 @@ class Security(commands.Cog):
     ):
 
         if not await self.is_owner(ctx.author):
-
             return await self.owner_only_message(ctx)
 
         if not member.bot:
@@ -1069,33 +1350,15 @@ class Security(commands.Cog):
             []
         )
 
-        # Normalize
-
-        normalized = []
-
-        for bot_id in bots:
-
-            try:
-
-                normalized.append(
-                    int(bot_id)
-                )
-
-            except (
-                TypeError,
-                ValueError
-            ):
-                pass
-
         bots = list(
-            dict.fromkeys(normalized)
+            dict.fromkeys(
+                int(x)
+                for x in bots
+                if str(x).isdigit()
+            )
         )
 
         settings["whitelist_bots"] = bots
-
-        # ====================================================
-        # ADD
-        # ====================================================
 
         if action in (
             "add",
@@ -1129,11 +1392,6 @@ class Security(commands.Cog):
                 delete_after=7
             )
 
-
-        # ====================================================
-        # REMOVE
-        # ====================================================
-
         if action in (
             "remove",
             "delete",
@@ -1166,14 +1424,8 @@ class Security(commands.Cog):
                 delete_after=6
             )
 
-
-        # ====================================================
-        # INVALID
-        # ====================================================
-
         return await ctx.send(
             "❌ Invalid action.\n\n"
-            "**Use:**\n"
             "`!whitelistbot @Bot`\n"
             "`!whitelistbot @Bot remove`",
             delete_after=7
@@ -1195,7 +1447,6 @@ class Security(commands.Cog):
     ):
 
         if not await self.is_owner(ctx.author):
-
             return await self.owner_only_message(ctx)
 
         settings = self.get_settings(
@@ -1273,7 +1524,6 @@ class Security(commands.Cog):
     ):
 
         if not await self.is_owner(ctx.author):
-
             return await self.owner_only_message(ctx)
 
         settings = self.get_settings(
@@ -1285,32 +1535,15 @@ class Security(commands.Cog):
             []
         )
 
-        normalized_users = []
-
-        for user_id in users:
-
-            try:
-
-                normalized_users.append(
-                    int(user_id)
-                )
-
-            except (
-                TypeError,
-                ValueError
-            ):
-
-                pass
-
-        settings["whitelist_music"] = list(
+        users = list(
             dict.fromkeys(
-                normalized_users
+                int(x)
+                for x in users
+                if str(x).isdigit()
             )
         )
 
-        users = settings["whitelist_music"]
-
-        # SHOW LIST
+        settings["whitelist_music"] = users
 
         if member is None:
 
@@ -1376,28 +1609,6 @@ class Security(commands.Cog):
             action
         ).lower().strip()
 
-        if action not in (
-            "add",
-            "remove",
-            "delete",
-            "del",
-            "off",
-            "disable",
-            "on",
-            "enable",
-            "toggle"
-        ):
-
-            return await ctx.send(
-                "❌ Invalid action.\n\n"
-                "`/whitelist @User`\n"
-                "`/whitelist @User add`\n"
-                "`/whitelist @User remove`",
-                delete_after=8
-            )
-
-        # REMOVE
-
         if action in (
             "remove",
             "delete",
@@ -1428,8 +1639,6 @@ class Security(commands.Cog):
                 delete_after=6
             )
 
-        # ADD
-
         if action in (
             "add",
             "on",
@@ -1458,11 +1667,25 @@ class Security(commands.Cog):
                 delete_after=8
             )
 
-        # TOGGLE
+        if action == "toggle":
 
-        if member.id in users:
+            if member.id in users:
 
-            users.remove(
+                users.remove(
+                    member.id
+                )
+
+                save_data(
+                    self.data
+                )
+
+                return await ctx.send(
+                    f"🟡 {member.mention} "
+                    "**music whitelist se remove ho gaya.**",
+                    delete_after=6
+                )
+
+            users.append(
                 member.id
             )
 
@@ -1471,22 +1694,16 @@ class Security(commands.Cog):
             )
 
             return await ctx.send(
-                f"🟡 {member.mention} "
-                "**music whitelist se remove ho gaya.**",
-                delete_after=6
+                f"🟢 {member.mention} "
+                "**music whitelist mein add ho gaya.**",
+                delete_after=8
             )
 
-        users.append(
-            member.id
-        )
-
-        save_data(
-            self.data
-        )
-
-        await ctx.send(
-            f"🟢 {member.mention} "
-            "**music whitelist mein add ho gaya.**",
+        return await ctx.send(
+            "❌ Invalid action.\n\n"
+            "`/whitelist @User`\n"
+            "`/whitelist @User add`\n"
+            "`/whitelist @User remove`",
             delete_after=8
         )
 
@@ -1506,10 +1723,7 @@ class Security(commands.Cog):
         role: discord.Role
     ):
 
-        # OWNER CHECK
-
         if not await self.is_owner(ctx.author):
-
             return await self.owner_only_message(ctx)
 
         if role.is_default():
@@ -1576,11 +1790,6 @@ class Security(commands.Cog):
     # ========================================================
     # REMOVE ROLE
     # ========================================================
-    #
-    # Usage:
-    #
-    # !removerole @User @Role
-    #
 
     @commands.command(
         name="removerole"
@@ -1593,10 +1802,7 @@ class Security(commands.Cog):
         role: discord.Role
     ):
 
-        # OWNER CHECK
-
         if not await self.is_owner(ctx.author):
-
             return await self.owner_only_message(ctx)
 
         if role.is_default():
@@ -1692,16 +1898,7 @@ class Security(commands.Cog):
             True
         ):
 
-            print(
-                f"[SECURITY] Anti-Bot disabled "
-                f"in {guild.name}"
-            )
-
             return
-
-        # ====================================================
-        # CHECK WHITELIST FIRST
-        # ====================================================
 
         whitelist = settings.get(
             "whitelist_bots",
@@ -1740,10 +1937,6 @@ class Security(commands.Cog):
 
         inviter = None
 
-        # ====================================================
-        # AUDIT LOG SEARCH
-        # ====================================================
-
         for attempt in range(12):
 
             try:
@@ -1769,19 +1962,10 @@ class Security(commands.Cog):
                         entry.created_at
                     ).total_seconds()
 
-                    if age < 0:
-                        continue
-
-                    if age > 30:
+                    if age < 0 or age > 30:
                         continue
 
                     inviter = entry.user
-
-                    print(
-                        f"[SECURITY] 👤 Bot added by: "
-                        f"{inviter} "
-                        f"({inviter.id})"
-                    )
 
                     break
 
@@ -1792,11 +1976,6 @@ class Security(commands.Cog):
 
                 print(
                     "[SECURITY] ❌ Cannot read audit logs."
-                )
-
-                print(
-                    "[SECURITY] Give HSL-CORP "
-                    "`View Audit Log` permission."
                 )
 
                 break
@@ -1815,34 +1994,13 @@ class Security(commands.Cog):
                     repr(e)
                 )
 
-        # ====================================================
-        # INVITER UNKNOWN
-        # ====================================================
-
         if inviter is None:
-
-            print(
-                "[SECURITY] ⚠️ Inviter not found."
-            )
-
-            print(
-                "[SECURITY] STRICT MODE → "
-                "KICKING UNKNOWN BOT"
-            )
 
             await self.kick_unauthorized_bot(
                 member
             )
 
-            print(
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            )
-
             return
-
-        # ====================================================
-        # SERVER OWNER CAN ADD NON-WHITELISTED BOT
-        # ====================================================
 
         if inviter.id == guild.owner_id:
 
@@ -1851,44 +2009,7 @@ class Security(commands.Cog):
                 f"{inviter} added bot."
             )
 
-            print(
-                "[SECURITY] ✅ BOT ALLOWED"
-            )
-
-            print(
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            )
-
             return
-
-        # ====================================================
-        # BOT OWNER DOES NOT GET BOT-ADD BYPASS
-        # ====================================================
-        #
-        # IMPORTANT:
-        #
-        # You specifically wanted strict Anti-Bot where
-        # only SERVER OWNER can add a normal non-whitelisted bot.
-        #
-        # Therefore BOT OWNER / OWNER ROLE cannot bypass
-        # this anti-bot rule.
-        #
-        # They can use !whitelistbot first.
-        #
-
-        print(
-            "🚨🚨🚨 UNAUTHORIZED BOT ADDITION 🚨🚨🚨"
-        )
-
-        print(
-            f"[SECURITY] 🤖 Bot: "
-            f"{member} ({member.id})"
-        )
-
-        print(
-            f"[SECURITY] 👤 Inviter: "
-            f"{inviter} ({inviter.id})"
-        )
 
         inviter_member = None
 
@@ -1909,33 +2030,16 @@ class Security(commands.Cog):
 
                 if inviter_member is None:
 
-                    inviter_member = (
-                        await guild.fetch_member(
-                            inviter.id
-                        )
+                    inviter_member = await guild.fetch_member(
+                        inviter.id
                     )
 
-            except discord.NotFound:
-
-                print(
-                    "[SECURITY] Inviter no longer "
-                    "in server."
-                )
-
-            except Exception as e:
-
-                print(
-                    "[SECURITY] Inviter fetch error:",
-                    repr(e)
-                )
-
-        # KICK BOT
+            except Exception:
+                pass
 
         await self.kick_unauthorized_bot(
             member
         )
-
-        # REMOVE INVITER ROLES
 
         if inviter_member:
 
@@ -1949,60 +2053,27 @@ class Security(commands.Cog):
 
 
     # ========================================================
-    # KICK UNAUTHORIZED BOT
+    # KICK BOT
     # ========================================================
 
     async def kick_unauthorized_bot(
         self,
-        member: discord.Member
+        member
     ):
 
         guild = member.guild
-
         me = guild.me
 
         if me is None:
-
-            print(
-                "[SECURITY] ❌ HSL-CORP member "
-                "not available."
-            )
-
             return False
 
         if not me.guild_permissions.kick_members:
-
-            print(
-                "[SECURITY] ❌ KICK FAILED"
-            )
-
-            print(
-                "[SECURITY] HSL-CORP does not have "
-                "`Kick Members` permission."
-            )
-
             return False
 
         if self.bot.user and member.id == self.bot.user.id:
-
-            print(
-                "[SECURITY] ❌ Target is HSL-CORP itself."
-            )
-
             return False
 
         if member.top_role >= me.top_role:
-
-            print(
-                "[SECURITY] ❌ KICK BLOCKED BY "
-                "ROLE HIERARCHY."
-            )
-
-            print(
-                "[SECURITY] Move HSL-CORP's role "
-                "ABOVE the unauthorized bot."
-            )
-
             return False
 
         try:
@@ -2015,34 +2086,19 @@ class Security(commands.Cog):
             )
 
             print(
-                f"[SECURITY] ✅ BOT KICKED: "
-                f"{member}"
+                f"[SECURITY] ✅ BOT KICKED: {member}"
             )
 
             return True
 
-        except discord.Forbidden:
-
-            print(
-                "[SECURITY] ❌ Discord Forbidden "
-                "while kicking bot."
-            )
-
-        except discord.HTTPException as e:
-
-            print(
-                "[SECURITY] ❌ Kick HTTP error:",
-                repr(e)
-            )
-
         except Exception as e:
 
             print(
-                "[SECURITY] ❌ Kick error:",
+                "[SECURITY] KICK ERROR:",
                 repr(e)
             )
 
-        return False
+            return False
 
 
     # ========================================================
@@ -2051,7 +2107,7 @@ class Security(commands.Cog):
 
     async def remove_inviter_roles(
         self,
-        member: discord.Member
+        member
     ):
 
         if not member:
@@ -2059,15 +2115,7 @@ class Security(commands.Cog):
 
         guild = member.guild
 
-        # NEVER remove server owner's roles
-
         if member.id == guild.owner_id:
-
-            print(
-                "[SECURITY] Server owner → "
-                "roles protected."
-            )
-
             return
 
         me = guild.me
@@ -2076,16 +2124,6 @@ class Security(commands.Cog):
             return
 
         if not me.guild_permissions.manage_roles:
-
-            print(
-                "[SECURITY] ❌ ROLE REMOVE FAILED"
-            )
-
-            print(
-                "[SECURITY] HSL-CORP does not have "
-                "`Manage Roles` permission."
-            )
-
             return
 
         removable_roles = []
@@ -2099,28 +2137,11 @@ class Security(commands.Cog):
                 continue
 
             if role >= me.top_role:
-
-                print(
-                    f"[SECURITY] ⚠️ Cannot remove "
-                    f"'{role.name}' — role is "
-                    f"equal/higher than HSL."
-                )
-
                 continue
 
             removable_roles.append(
                 role
             )
-
-        if not removable_roles:
-
-            print(
-                "[SECURITY] ⚠️ No removable roles."
-            )
-
-            return
-
-        removed = 0
 
         for role in removable_roles:
 
@@ -2134,45 +2155,16 @@ class Security(commands.Cog):
                     )
                 )
 
-                removed += 1
-
-                print(
-                    f"[SECURITY] 🗑️ Removed role: "
-                    f"{role.name}"
-                )
-
                 await asyncio.sleep(
                     0.2
-                )
-
-            except discord.Forbidden:
-
-                print(
-                    f"[SECURITY] ❌ FORBIDDEN removing "
-                    f"role: {role.name}"
-                )
-
-            except discord.HTTPException as e:
-
-                print(
-                    f"[SECURITY] ❌ HTTP error removing "
-                    f"{role.name}:",
-                    repr(e)
                 )
 
             except Exception as e:
 
                 print(
-                    f"[SECURITY] ❌ Role error "
-                    f"{role.name}:",
+                    "[SECURITY] ROLE REMOVE ERROR:",
                     repr(e)
                 )
-
-        print(
-            f"[SECURITY] ✅ Removed "
-            f"{removed}/{len(removable_roles)} "
-            f"roles from {member}"
-        )
 
 
     # ========================================================
@@ -2195,33 +2187,15 @@ class Security(commands.Cog):
         )
 
         try:
-
-            user_id = int(
-                user_id
-            )
-
-        except (
-            TypeError,
-            ValueError
-        ):
-
+            user_id = int(user_id)
+        except Exception:
             return False
 
-        for allowed_id in whitelist:
-
-            try:
-
-                if int(allowed_id) == user_id:
-                    return True
-
-            except (
-                TypeError,
-                ValueError
-            ):
-
-                continue
-
-        return False
+        return any(
+            int(x) == user_id
+            for x in whitelist
+            if str(x).isdigit()
+        )
 
 
     # ========================================================
@@ -2263,12 +2237,8 @@ class Security(commands.Cog):
         message: discord.Message
     ):
 
-        # Ignore bots
-
         if message.author.bot:
             return
-
-        # Ignore DMs
 
         if not message.guild:
             return
@@ -2283,6 +2253,129 @@ class Security(commands.Cog):
         ).strip()
 
         lower_content = content.lower()
+
+        # ====================================================
+        # OWNER BYPASS
+        # ====================================================
+
+        owner_bypass = False
+
+        if message.author.id == message.guild.owner_id:
+            owner_bypass = True
+
+        elif message.author.id in BOT_OWNER_IDS:
+            owner_bypass = True
+
+        elif self.has_owner_role(message.author):
+            owner_bypass = True
+
+        else:
+
+            try:
+
+                if await self.bot.is_owner(
+                    message.author
+                ):
+                    owner_bypass = True
+
+            except Exception:
+                pass
+
+        # ====================================================
+        # GALI FILTER
+        # ====================================================
+
+        if (
+            settings.get(
+                "gali_enabled",
+                True
+            )
+            and not owner_bypass
+        ):
+
+            gali_words = settings.get(
+                "gali_words",
+                []
+            )
+
+            detected_gali = self.contains_gali(
+                content,
+                gali_words
+            )
+
+            if detected_gali:
+
+                print(
+                    f"[SECURITY] 🤬 GALI DETECTED | "
+                    f"User: {message.author} | "
+                    f"Word: {detected_gali}"
+                )
+
+                try:
+
+                    await message.delete()
+
+                except discord.Forbidden:
+
+                    print(
+                        "[SECURITY] ❌ Cannot delete gali message."
+                    )
+
+                except Exception as e:
+
+                    print(
+                        "[SECURITY] GALI DELETE ERROR:",
+                        repr(e)
+                    )
+
+                # TIMEOUT
+
+                try:
+
+                    await message.author.timeout(
+                        timedelta(
+                            minutes=10
+                        ),
+                        reason=(
+                            "HSL-CORP Gali Filter - "
+                            "Inappropriate language"
+                        )
+                    )
+
+                except discord.Forbidden:
+
+                    print(
+                        "[SECURITY] ❌ Cannot timeout gali user."
+                    )
+
+                except Exception as e:
+
+                    print(
+                        "[SECURITY] GALI TIMEOUT ERROR:",
+                        repr(e)
+                    )
+
+                # WARNING
+
+                try:
+
+                    warning = await message.channel.send(
+
+                        f"🤬 {message.author.mention} "
+                        "**inappropriate language detected — "
+                        "10 minute timeout.**"
+                    )
+
+                    await asyncio.sleep(
+                        3
+                    )
+
+                    await warning.delete()
+
+                except Exception:
+                    pass
+
+                return
 
         # ====================================================
         # DUPLICATE
@@ -2305,9 +2398,7 @@ class Security(commands.Cog):
             if old == message.content:
 
                 try:
-
                     await message.delete()
-
                 except Exception:
                     pass
 
@@ -2318,7 +2409,9 @@ class Security(commands.Cog):
                         "**duplicate message detected.**"
                     )
 
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(
+                        2
+                    )
 
                     await warning.delete()
 
@@ -2362,46 +2455,12 @@ class Security(commands.Cog):
 
             if is_link:
 
-                # Server owner bypass
-
-                if message.author.id == message.guild.owner_id:
-
+                if owner_bypass:
                     return
-
-                # Bot owner bypass
-
-                if message.author.id in BOT_OWNER_IDS:
-
-                    return
-
-                # Owner role bypass
-
-                if self.has_owner_role(
-                    message.author
-                ):
-
-                    return
-
-                # Discord.py owner
-
-                try:
-
-                    if await self.bot.is_owner(
-                        message.author
-                    ):
-
-                        return
-
-                except Exception:
-                    pass
-
-                # Music command
 
                 is_music = self.is_music_command(
                     content
                 )
-
-                # Music whitelist
 
                 if is_music:
 
@@ -2411,58 +2470,37 @@ class Security(commands.Cog):
                     )
 
                     if allowed:
-
                         return
-
-                # Delete link
 
                 try:
 
                     await message.delete()
 
-                except discord.Forbidden:
-
-                    print(
-                        "[SECURITY] ❌ Cannot delete link."
-                    )
-
                 except Exception as e:
 
                     print(
-                        "[SECURITY] Delete error:",
+                        "[SECURITY] LINK DELETE ERROR:",
                         repr(e)
                     )
-
-                # Timeout
 
                 try:
 
                     await message.author.timeout(
-
                         timedelta(
                             minutes=10
                         ),
-
                         reason=(
                             "HSL Anti-Link - "
                             "Unauthorized link"
                         )
                     )
 
-                except discord.Forbidden:
-
-                    print(
-                        "[SECURITY] ❌ Cannot timeout user."
-                    )
-
                 except Exception as e:
 
                     print(
-                        "[SECURITY] TIMEOUT ERROR:",
+                        "[SECURITY] LINK TIMEOUT ERROR:",
                         repr(e)
                     )
-
-                # Warning
 
                 try:
 
@@ -2472,7 +2510,9 @@ class Security(commands.Cog):
                         "**link detected — 10 minute timeout.**"
                     )
 
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(
+                        2
+                    )
 
                     await warning.delete()
 
@@ -2517,13 +2557,10 @@ class Security(commands.Cog):
         error
     ):
 
-        # Ignore errors already handled elsewhere
-
         if isinstance(
             error,
             commands.CommandNotFound
         ):
-
             return
 
         if isinstance(
@@ -2636,6 +2673,10 @@ class Security(commands.Cog):
 
         print(
             "♻️ Duplicate Protection"
+        )
+
+        print(
+            "🤬 Gali Filter"
         )
 
         print(
