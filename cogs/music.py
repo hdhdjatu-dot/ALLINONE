@@ -12,7 +12,7 @@ from discord.ext import commands
 import yt_dlp
 
 # =========================================================
-# HSL-CORP FIXED & FAST MUSIC SYSTEM
+# HSL-CORP ULTRA FIXED MUSIC SYSTEM
 # =========================================================
 
 def load_opus():
@@ -177,11 +177,17 @@ class MusicPlayer(commands.Cog):
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
+            "extract_flat": False,
+            "skip_download": True,
+            "socket_timeout": 10,
             "source_address": "0.0.0.0",
-            "socket_timeout": 15,
-            "default_search": "ytsearch",
             "nocheckcertificate": True,
             "geo_bypass": True,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "web", "ios"],
+                }
+            },
             "http_headers": {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             },
@@ -192,37 +198,42 @@ class MusicPlayer(commands.Cog):
 
     async def resolve_song(self, search_query, requester):
         loop = asyncio.get_running_loop()
+
         def extract():
             query = str(search_query).strip()
             if not query:
                 return None
-            target = query if query.startswith(("http://", "https://")) else f"ytsearch1:{query}"
+            
+            targets = [query] if query.startswith(("http://", "https://")) else [f"ytsearch1:{query}", f"scsearch1:{query}"]
             opts = self.get_ytdlp_options()
-            try:
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    info = ydl.extract_info(target, download=False)
-                if not info:
-                    return None
-                if "entries" in info:
-                    entries = [e for e in info.get("entries", []) if e]
-                    if not entries:
-                        return None
-                    info = entries[0]
-                
-                title = info.get("title", "Unknown Song")
-                webpage_url = info.get("webpage_url") or info.get("url") or f"https://www.youtube.com/watch?v={info.get('id')}"
-                thumbnail = info.get("thumbnail")
-                stream_url = info.get("url")
-                
-                return {
-                    "title": title,
-                    "url": webpage_url,
-                    "thumbnail": thumbnail,
-                    "stream_url": stream_url
-                }
-            except Exception as e:
-                print(f"[MUSIC] Resolve Error: {e}")
-                return None
+
+            for target in targets:
+                try:
+                    with yt_dlp.YoutubeDL(opts) as ydl:
+                        info = ydl.extract_info(target, download=False)
+                    if not info:
+                        continue
+                    if "entries" in info:
+                        entries = [e for e in info.get("entries", []) if e]
+                        if not entries:
+                            continue
+                        info = entries[0]
+
+                    title = info.get("title", "Unknown Song")
+                    webpage_url = info.get("webpage_url") or info.get("url") or f"https://www.youtube.com/watch?v={info.get('id')}"
+                    thumbnail = info.get("thumbnail")
+                    stream_url = info.get("url")
+
+                    if stream_url:
+                        return {
+                            "title": title,
+                            "url": webpage_url,
+                            "thumbnail": thumbnail,
+                            "stream_url": stream_url
+                        }
+                except Exception as e:
+                    print(f"[MUSIC] Extraction error for target '{target}': {e}")
+            return None
 
         data = await loop.run_in_executor(None, extract)
         if not data:
@@ -234,7 +245,7 @@ class MusicPlayer(commands.Cog):
             return None
         loop = asyncio.get_running_loop()
         requester = self.current.requester
-        queries = ["Hindi songs", "Bollywood romantic songs", "Trending music hits"]
+        queries = ["Hindi trending songs", "Bollywood romantic hits", "Latest Hindi music"]
         query = random.choice(queries)
 
         def extract():
@@ -372,7 +383,7 @@ class MusicPlayer(commands.Cog):
         song = await self.resolve_song(query, ctx.author)
         
         if not song:
-            return await msg.edit(content="❌ **Song Nahi Mila!** Please check song name or YouTube link.")
+            return await msg.edit(content="❌ **Song Nahi Mila!** Please try pasting full YouTube URL or check search query.")
 
         self.queue.append(song)
         await msg.edit(content=f"🎵 Added **{song.title}** to queue!")
