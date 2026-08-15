@@ -4,7 +4,6 @@ import shutil
 import ctypes
 import ctypes.util
 import random
-import time
 from collections import deque
 
 import aiohttp
@@ -13,14 +12,12 @@ from discord.ext import commands
 import yt_dlp
 
 # =========================================================
-# HSL-CORP ULTRA FAST MUSIC SYSTEM
+# HSL-CORP ULTRA FAST & FIXED MUSIC SYSTEM
 # =========================================================
 
 def load_opus():
     if discord.opus.is_loaded():
-        print("[MUSIC] [OK] Opus already loaded.")
         return True
-
     possible_paths = [
         ctypes.util.find_library("opus"),
         "libopus.so.0",
@@ -28,7 +25,6 @@ def load_opus():
         "/usr/lib/x86_64-linux-gnu/libopus.so.0",
         "/usr/lib/aarch64-linux-gnu/libopus.so.0",
     ]
-
     for path in possible_paths:
         if not path:
             continue
@@ -36,36 +32,28 @@ def load_opus():
             ctypes.CDLL(path)
             discord.opus.load_opus(path)
             if discord.opus.is_loaded():
-                print(f"[MUSIC] [OK] Opus loaded: {path}")
                 return True
-        except Exception as e:
-            print(f"[MUSIC] [WARN] Failed to load Opus {path}: {e}")
-
-    print("[MUSIC] [ERROR] Opus codec NOT loaded.")
+        except Exception:
+            pass
     return False
 
-OPUS_LOADED = load_opus()
+load_opus()
 
-BASE_DIR = os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))
-) if __file__ else os.getcwd()
-
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) if __file__ else os.getcwd()
 COOKIE_PATH = os.path.join(BASE_DIR, "cookies.txt")
 YOUTUBE_COOKIES = os.getenv("YOUTUBE_COOKIES")
 COOKIE_FILE = None
 
 if os.path.isfile(COOKIE_PATH):
     COOKIE_FILE = COOKIE_PATH
-    print(f"[MUSIC] [COOKIE] Local cookies found: {COOKIE_FILE}")
 elif YOUTUBE_COOKIES:
     try:
         cookie_dir = "/tmp" if os.name != "nt" else BASE_DIR
         COOKIE_FILE = os.path.join(cookie_dir, "youtube_cookies.txt")
         with open(COOKIE_FILE, "w", encoding="utf-8") as f:
             f.write(YOUTUBE_COOKIES)
-        print("[MUSIC] [COOKIE] Cookies loaded from environment.")
-    except Exception as e:
-        print(f"[MUSIC] [ERROR] Cookie file error: {e!r}")
+    except Exception:
+        pass
 
 HSL_GIF = (
     "https://media3.giphy.com/media/"
@@ -89,16 +77,15 @@ def find_ffmpeg():
 
 FFMPEG_PATH = find_ffmpeg()
 
-# High-Speed YTDLP Configuration
 YTDLP_OPTIONS = {
+    "format": "bestaudio/best",
     "quiet": True,
     "no_warnings": True,
     "noplaylist": True,
     "source_address": "0.0.0.0",
-    "extract_flat": False,
-    "skip_download": True,
     "socket_timeout": 10,
-    "retries": 2,
+    "retries": 3,
+    "default_search": "ytsearch",
     "http_headers": {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -131,12 +118,12 @@ class MusicButtons(discord.ui.View):
             self.cog.voice.pause()
             button.emoji = "▶️"
             await interaction.response.edit_message(view=self)
-            await interaction.followup.send("⏸️ Paused playback!", ephemeral=True)
+            await interaction.followup.send("⏸️ Paused!", ephemeral=True)
         elif self.cog.voice.is_paused():
             self.cog.voice.resume()
             button.emoji = "⏸️"
             await interaction.response.edit_message(view=self)
-            await interaction.followup.send("▶️ Resumed playback!", ephemeral=True)
+            await interaction.followup.send("▶️ Resumed!", ephemeral=True)
 
     @discord.ui.button(emoji="⏭️", style=discord.ButtonStyle.primary)
     async def skip_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -162,16 +149,12 @@ class MusicPlayer(commands.Cog):
         self.text_channel = None
         self.queue = deque()
         self.current = None
-        self.volume = 1.0
         self.loop = False
         self.autoplay = True
         self.starting = False
         self.play_token = 0
         self.play_lock = asyncio.Lock()
-        self.skip_lock = asyncio.Lock()
         self.autoplay_history = deque(maxlen=30)
-        self.play_history = deque(maxlen=30)
-        self.stopping = False
 
     def invalidate_playback(self):
         self.play_token += 1
@@ -180,8 +163,7 @@ class MusicPlayer(commands.Cog):
     async def update_voice_status(self, text):
         if not self.voice or not self.voice.is_connected() or not self.voice.channel:
             return
-        channel_id = self.voice.channel.id
-        url = f"https://discord.com/api/v10/channels/{channel_id}/voice-status"
+        url = f"https://discord.com/api/v10/channels/{self.voice.channel.id}/voice-status"
         headers = {
             "Authorization": f"Bot {self.bot.http.token}",
             "Content-Type": "application/json",
@@ -195,8 +177,7 @@ class MusicPlayer(commands.Cog):
     async def clear_voice_status(self):
         if not self.voice or not self.voice.channel:
             return
-        channel_id = self.voice.channel.id
-        url = f"https://discord.com/api/v10/channels/{channel_id}/voice-status"
+        url = f"https://discord.com/api/v10/channels/{self.voice.channel.id}/voice-status"
         headers = {
             "Authorization": f"Bot {self.bot.http.token}",
             "Content-Type": "application/json",
@@ -231,44 +212,29 @@ class MusicPlayer(commands.Cog):
                     if not entries:
                         return None
                     info = entries[0]
-                webpage_url = info.get("webpage_url") or info.get("original_url") or f"https://www.youtube.com/watch?v={info.get('id')}"
                 return {
                     "title": info.get("title", "Unknown Song"),
-                    "url": webpage_url,
+                    "url": info.get("webpage_url") or info.get("url"),
                     "thumbnail": info.get("thumbnail"),
+                    "stream_url": info.get("url")
                 }
             except Exception as e:
-                print(f"[MUSIC] [ERROR] Fast resolve failed: {e}")
+                print(f"[MUSIC] Resolve Error: {e}")
                 return None
         data = await loop.run_in_executor(None, extract)
         if not data:
             return None
-        return Song(data["title"], data["url"], data["thumbnail"], requester)
-
-    async def get_audio_stream(self, song):
-        loop = asyncio.get_running_loop()
-        def extract():
-            try:
-                options = self.get_ytdlp_options()
-                options["format"] = "bestaudio/best"
-                with yt_dlp.YoutubeDL(options) as ydl:
-                    info = ydl.extract_info(song.url, download=False)
-                if "entries" in info:
-                    info = info["entries"][0]
-                return info.get("url")
-            except Exception as e:
-                print(f"[MUSIC] [ERROR] Fast Stream extract failed: {e}")
-                return None
-        return await loop.run_in_executor(None, extract)
+        song = Song(data["title"], data["url"], data["thumbnail"], requester)
+        song.stream_url = data["stream_url"]
+        return song
 
     async def resolve_autoplay_song(self):
         if not self.current:
             return None
         loop = asyncio.get_running_loop()
         requester = self.current.requester
-        previous_url = self.current.url
-        autoplay_queries = ["Hindi songs", "Bollywood songs", "trending music"]
-        query = random.choice(autoplay_queries)
+        queries = ["Hindi songs", "Bollywood romantic songs", "Trending music"]
+        query = random.choice(queries)
 
         def extract():
             options = self.get_ytdlp_options()
@@ -279,12 +245,13 @@ class MusicPlayer(commands.Cog):
                     return None
                 entries = [e for e in info.get("entries", []) if e]
                 for entry in entries:
-                    url = entry.get("webpage_url") or f"https://www.youtube.com/watch?v={entry.get('id')}"
-                    if url != previous_url and url not in self.autoplay_history:
+                    url = entry.get("webpage_url") or entry.get("url")
+                    if url and url not in self.autoplay_history:
                         return {
                             "title": entry.get("title", "Unknown Song"),
                             "url": url,
                             "thumbnail": entry.get("thumbnail"),
+                            "stream_url": entry.get("url")
                         }
             except Exception:
                 pass
@@ -293,7 +260,8 @@ class MusicPlayer(commands.Cog):
         data = await loop.run_in_executor(None, extract)
         if not data:
             return None
-        song = Song(data["title"], data["url"], data.get("thumbnail"), requester)
+        song = Song(data["title"], data["url"], data["thumbnail"], requester)
+        song.stream_url = data["stream_url"]
         self.autoplay_history.append(song.url)
         return song
 
@@ -329,32 +297,43 @@ class MusicPlayer(commands.Cog):
 
                     if self.voice.is_playing() or self.voice.is_paused():
                         self.voice.stop()
+                        await asyncio.sleep(0.1)
 
-                    stream_url = await self.get_audio_stream(song)
-                    if token != self.play_token or not stream_url:
-                        if self.queue:
-                            continue
-                        self.current = None
-                        return
+                    stream_url = song.stream_url if hasattr(song, "stream_url") else None
+                    if not stream_url:
+                        res = await self.resolve_song(song.url, song.requester)
+                        if res:
+                            stream_url = res.stream_url
 
-                    # Fast-buffering FFmpeg parameters
+                    if not stream_url or token != self.play_token:
+                        continue
+
                     before_options = (
                         "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 2 "
-                        "-probesize 32000 -analyzeduration 0 -nostdin"
+                        "-probesize 32000 -analyzeduration 0"
                     )
-                    ffmpeg_options = "-vn -loglevel error -ar 48000 -ac 2"
+                    ffmpeg_options = "-vn -loglevel error"
 
-                    source = discord.FFmpegPCMAudio(
-                        stream_url,
-                        executable=FFMPEG_PATH,
-                        before_options=before_options,
-                        options=ffmpeg_options
-                    )
-                    source = discord.PCMVolumeTransformer(source, volume=self.volume)
+                    try:
+                        source = await discord.FFmpegOpusAudio.from_probe(
+                            stream_url,
+                            executable=FFMPEG_PATH,
+                            before_options=before_options,
+                            options=ffmpeg_options
+                        )
+                    except Exception:
+                        source = discord.FFmpegPCMAudio(
+                            stream_url,
+                            executable=FFMPEG_PATH,
+                            before_options=before_options,
+                            options=ffmpeg_options
+                        )
 
                     def after_play(error):
-                        if token == self.play_token and not self.stopping:
-                            self.bot.loop.call_soon_threadsafe(lambda: asyncio.create_task(self.play_next()))
+                        if token == self.play_token:
+                            self.bot.loop.call_soon_threadsafe(
+                                lambda: asyncio.create_task(self.play_next())
+                            )
 
                     self.voice.play(source, after=after_play)
                     await self.update_voice_status(f"🎶 {song.title}")
@@ -369,7 +348,6 @@ class MusicPlayer(commands.Cog):
                             embed.set_thumbnail(url=song.thumbnail)
                         embed.set_image(url=HSL_GIF)
                         embed.set_footer(text=f"Requested by {song.requester.display_name}")
-                        
                         view = MusicButtons(self, self.text_channel)
                         try:
                             await self.text_channel.send(embed=embed, view=view)
@@ -379,10 +357,14 @@ class MusicPlayer(commands.Cog):
             finally:
                 self.starting = False
 
-    @commands.command(name="play", aliases=["p"])
+    # Hybrid Support (Works with prefix `!play` AND slash `/play`)
+    @commands.hybrid_command(name="play", description="Play any song from YouTube")
     async def play(self, ctx, *, query: str):
         if not ctx.author.voice:
-            return await ctx.send("❌ Voice Channel join karo pehle!")
+            return await ctx.send("❌ Channel Join Karo Pehle!")
+
+        if ctx.interaction:
+            await ctx.interaction.response.defer()
 
         self.text_channel = ctx.channel
         if not ctx.voice_client:
@@ -392,39 +374,42 @@ class MusicPlayer(commands.Cog):
 
         song = await self.resolve_song(query, ctx.author)
         if not song:
-            return await ctx.send("❌ Song nahi mila!")
+            return await ctx.send("❌ Song Nahi Mila!")
 
         self.queue.append(song)
         await ctx.send(f"🎵 Added **{song.title}** to queue!")
         if not self.voice.is_playing() and not self.voice.is_paused():
             await self.play_next()
 
-    @commands.command(name="skip", aliases=["s"])
+    @commands.hybrid_command(name="skip", description="Skip the currently playing song")
     async def skip(self, ctx):
         if not self.voice or not self.voice.is_connected():
             return await ctx.send("❌ Bot VC mein nahi hai.")
-        async with self.skip_lock:
-            self.invalidate_playback()
-            if self.voice.is_playing() or self.voice.is_paused():
-                self.voice.stop()
-            await ctx.send("⏭️ Skipped!")
-            await self.play_next()
+        self.invalidate_playback()
+        if self.voice.is_playing() or self.voice.is_paused():
+            self.voice.stop()
+        await ctx.send("⏭️ Skipped!")
+        await self.play_next()
 
-    @commands.command(name="pause")
+    @commands.hybrid_command(name="autoplay", description="Toggle autoplay mode")
+    async def autoplay_cmd(self, ctx):
+        self.autoplay = not self.autoplay
+        await ctx.send(f"📻 Autoplay **{'enabled' if self.autoplay else 'disabled'}**.")
+
+    @commands.hybrid_command(name="pause", description="Pause current music")
     async def pause(self, ctx):
         if self.voice and self.voice.is_playing():
             self.voice.pause()
             await ctx.send("⏸️ Paused.")
 
-    @commands.command(name="resume")
+    @commands.hybrid_command(name="resume", description="Resume paused music")
     async def resume(self, ctx):
         if self.voice and self.voice.is_paused():
             self.voice.resume()
             await ctx.send("▶️ Resumed.")
 
-    @commands.command(name="stop")
+    @commands.hybrid_command(name="stop", description="Stop music and clear queue")
     async def stop(self, ctx):
-        self.stopping = True
         self.invalidate_playback()
         self.queue.clear()
         self.current = None
@@ -432,41 +417,16 @@ class MusicPlayer(commands.Cog):
             if self.voice.is_playing() or self.voice.is_paused():
                 self.voice.stop()
             await self.clear_voice_status()
-        self.stopping = False
         await ctx.send("⏹️ Stopped.")
 
-    @commands.command(name="queue", aliases=["q"])
-    async def queue_info(self, ctx):
-        if not self.current and not self.queue:
-            return await ctx.send("📂 Queue empty hai!")
-        embed = discord.Embed(title="Current Music Queue", color=discord.Color.purple())
-        if self.current:
-            embed.add_field(name="Now Playing", value=f"[{self.current.title}]({self.current.url})", inline=False)
-        if self.queue:
-            queue_list = "\n".join([f"`{i+1}.` [{s.title}]({s.url})" for i, s in enumerate(list(self.queue)[:10])])
-            embed.add_field(name="Up Next", value=queue_list, inline=False)
-        await ctx.send(embed=embed)
-
-    @commands.command(name="loop")
-    async def loop(self, ctx):
-        self.loop = not self.loop
-        await ctx.send(f"🔂 Looping **{'enabled' if self.loop else 'disabled'}**.")
-
-    @commands.command(name="autoplay")
-    async def autoplay_cmd(self, ctx):
-        self.autoplay = not self.autoplay
-        await ctx.send(f"📻 Autoplay **{'enabled' if self.autoplay else 'disabled'}**.")
-
-    @commands.command(name="leave", aliases=["dc"])
+    @commands.hybrid_command(name="leave", description="Disconnect bot from VC")
     async def leave(self, ctx):
-        self.stopping = True
         self.invalidate_playback()
         self.queue.clear()
         if self.voice:
             await self.clear_voice_status()
             await self.voice.disconnect()
             self.voice = None
-        self.stopping = False
         await ctx.send("👋 Disconnected!")
 
 async def setup(bot):
