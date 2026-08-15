@@ -155,10 +155,8 @@ BASE_YTDLP = {
 
     "source_address": "0.0.0.0",
 
-    # Faster timeout
     "socket_timeout": 6,
 
-    # Don't waste time with many retries
     "retries": 1,
     "fragment_retries": 1,
 
@@ -576,13 +574,25 @@ class MusicPlayer:
                     if not url:
                         return None
 
+                    # =================================================
+                    # THUMBNAIL FALLBACK
+                    # =================================================
+
+                    thumbnail = info.get("thumbnail")
+
+                    if not thumbnail and video_id:
+                        thumbnail = (
+                            f"https://i.ytimg.com/vi/"
+                            f"{video_id}/hqdefault.jpg"
+                        )
+
                     return Song(
                         info.get(
                             "title",
                             "Unknown Song"
                         ),
                         url,
-                        info.get("thumbnail"),
+                        thumbnail,
                         requester
                     )
 
@@ -592,8 +602,6 @@ class MusicPlayer:
 
                 options = yt_options()
 
-                # IMPORTANT:
-                # ytsearch1 instead of ytsearch5
                 options["extract_flat"] = True
                 options["skip_download"] = True
                 options["noplaylist"] = True
@@ -649,10 +657,22 @@ class MusicPlayer:
                     f"watch?v={video_id}"
                 )
 
+                # =================================================
+                # THUMBNAIL FALLBACK
+                # =================================================
+
+                thumbnail = entry.get("thumbnail")
+
+                if not thumbnail:
+                    thumbnail = (
+                        f"https://i.ytimg.com/vi/"
+                        f"{video_id}/hqdefault.jpg"
+                    )
+
                 return Song(
                     title,
                     url,
-                    entry.get("thumbnail"),
+                    thumbnail,
                     requester
                 )
 
@@ -681,7 +701,6 @@ class MusicPlayer:
 
         def extract():
 
-            # Primary
             strategies = [
                 {
                     "player_client": [
@@ -840,8 +859,6 @@ class MusicPlayer:
 
         loop = asyncio.get_running_loop()
 
-        # Only one query instead of 20 random queries.
-        # This removes a lot of autoplay delay.
         queries = [
             "popular Hindi songs",
             "Punjabi hit songs",
@@ -948,10 +965,22 @@ class MusicPlayer:
                         ):
                             continue
 
+                        # =================================================
+                        # THUMBNAIL FALLBACK
+                        # =================================================
+
+                        thumbnail = entry.get("thumbnail")
+
+                        if not thumbnail:
+                            thumbnail = (
+                                f"https://i.ytimg.com/vi/"
+                                f"{video_id}/hqdefault.jpg"
+                            )
+
                         return Song(
                             title,
                             url,
-                            entry.get("thumbnail"),
+                            thumbnail,
                             (
                                 self.current.requester
                                 if self.current
@@ -1090,7 +1119,6 @@ class MusicPlayer:
 
                     self.starting = False
 
-                    # Immediately try next
                     if self.queue or self.autoplay:
 
                         asyncio.create_task(
@@ -1366,6 +1394,10 @@ class MusicPlayer:
             color=discord.Color.blurple()
         )
 
+        # =====================================================
+        # YOUTUBE SONG IMAGE
+        # =====================================================
+
         if song.thumbnail:
 
             embed.set_image(
@@ -1518,8 +1550,6 @@ class MusicControlView(
 
         async with player.skip_lock:
 
-            # Invalidate BEFORE stopping.
-            # Prevents old callback from starting another song.
             player.invalidate()
 
             if (
@@ -1530,8 +1560,6 @@ class MusicControlView(
 
                 player.voice.stop()
 
-            # Important:
-            # play_next gets the lock itself.
             player.starting = False
 
             await player.play_next()
@@ -1834,7 +1862,8 @@ class Music(commands.Cog):
 
             search_time = (
                 time.monotonic()
-                - started
+                -
+                started
             )
 
             print(
@@ -1987,6 +2016,7 @@ class Music(commands.Cog):
             await player.play_next()
 
         # Delete prefix command
+
         try:
 
             if ctx.message:
