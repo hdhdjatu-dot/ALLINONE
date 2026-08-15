@@ -4,7 +4,6 @@ import shutil
 import ctypes
 import ctypes.util
 import time
-import random
 import re
 from collections import deque
 
@@ -15,7 +14,7 @@ import yt_dlp
 
 
 # =========================================================
-# HSL-CORP MUSIC SYSTEM
+# HSL-CORP ULTRA FAST MUSIC SYSTEM
 # =========================================================
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -118,7 +117,7 @@ def find_ffmpeg():
             print(f"[MUSIC] [OK] FFmpeg: {path}")
             return path
 
-    print("[MUSIC] [WARN] FFmpeg not found in PATH.")
+    print("[MUSIC] [WARN] FFmpeg not found.")
     return "ffmpeg"
 
 
@@ -143,45 +142,33 @@ USER_AGENT = (
 
 
 # =========================================================
-# YT-DLP OPTIONS
+# YTDLP BASE OPTIONS
 # =========================================================
 
 BASE_YTDLP = {
-
     "quiet": True,
     "no_warnings": True,
+
     "noplaylist": True,
 
     "force_ipv4": True,
+
     "source_address": "0.0.0.0",
 
-    # FAST TIMEOUT
-    "socket_timeout": 8,
+    # Faster timeout
+    "socket_timeout": 6,
 
-    # FAST RETRIES
-    "retries": 2,
-    "fragment_retries": 2,
-
-    "concurrent_fragment_downloads": 1,
-
-    "ignoreerrors": False,
+    # Don't waste time with many retries
+    "retries": 1,
+    "fragment_retries": 1,
 
     "nocheckcertificate": True,
-
     "geo_bypass": True,
 
     "http_headers": {
         "User-Agent": USER_AGENT,
         "Accept-Language": "en-US,en;q=0.9",
         "Accept": "*/*",
-    },
-
-    "extractor_args": {
-        "youtube": {
-            "player_client": [
-                "web_embedded"
-            ]
-        }
     },
 
     "js_runtimes": {
@@ -201,14 +188,6 @@ def yt_options():
     options["http_headers"] = dict(
         BASE_YTDLP["http_headers"]
     )
-
-    options["extractor_args"] = {
-        "youtube": {
-            "player_client": [
-                "web_embedded"
-            ]
-        }
-    }
 
     if COOKIE_FILE and os.path.isfile(COOKIE_FILE):
         options["cookiefile"] = COOKIE_FILE
@@ -293,13 +272,11 @@ def normalize_title(text):
         text
     )
 
-    text = re.sub(
+    return re.sub(
         r"\s+",
         " ",
         text
     ).strip()
-
-    return text
 
 
 def title_tokens(text):
@@ -431,13 +408,8 @@ class MusicPlayer:
         self.last_play_request = None
         self.last_play_request_time = 0
 
-        self.autoplay_history = deque(
-            maxlen=100
-        )
-
-        self.play_history = deque(
-            maxlen=100
-        )
+        self.autoplay_history = deque(maxlen=100)
+        self.play_history = deque(maxlen=100)
 
         self.last_manual_query = None
 
@@ -451,8 +423,7 @@ class MusicPlayer:
         self.play_token += 1
 
         print(
-            f"[MUSIC] [TOKEN] Invalidated -> "
-            f"{self.play_token}"
+            f"[MUSIC] [TOKEN] -> {self.play_token}"
         )
 
         return self.play_token
@@ -486,9 +457,7 @@ class MusicPlayer:
                     "application/json",
             }
 
-            timeout = aiohttp.ClientTimeout(
-                total=8
-            )
+            timeout = aiohttp.ClientTimeout(total=5)
 
             async with aiohttp.ClientSession(
                 timeout=timeout
@@ -502,21 +471,17 @@ class MusicPlayer:
                     }
                 ) as response:
 
-                    if response.status not in (
-                        200,
-                        204
-                    ):
+                    if response.status not in (200, 204):
 
                         print(
-                            "[MUSIC] [WARN] "
-                            "Voice status:",
+                            "[MUSIC] [WARN] Voice status:",
                             response.status
                         )
 
         except Exception as e:
 
             print(
-                "[MUSIC] [WARN] Voice status error:",
+                "[MUSIC] [WARN] Voice status:",
                 repr(e)
             )
 
@@ -527,7 +492,7 @@ class MusicPlayer:
 
 
     # =====================================================
-    # RESOLVE SONG
+    # FAST SONG SEARCH
     # =====================================================
 
     async def resolve_song(
@@ -558,168 +523,147 @@ class MusicPlayer:
                     )
                 ):
 
-                    targets = [
-                        query_text
-                    ]
+                    options = yt_options()
+
+                    options.update({
+                        "skip_download": True,
+                        "noplaylist": True,
+                        "extract_flat": True,
+                    })
+
+                    with yt_dlp.YoutubeDL(
+                        options
+                    ) as ydl:
+
+                        info = ydl.extract_info(
+                            query_text,
+                            download=False
+                        )
+
+                    if not info:
+                        return None
+
+                    if "entries" in info:
+
+                        entries = [
+                            x
+                            for x in (
+                                info.get("entries")
+                                or []
+                            )
+                            if x
+                        ]
+
+                        if not entries:
+                            return None
+
+                        info = entries[0]
+
+                    video_id = info.get("id")
+
+                    url = (
+                        info.get("webpage_url")
+                        or info.get("original_url")
+                    )
+
+                    if not url and video_id:
+
+                        url = (
+                            "https://www.youtube.com/"
+                            f"watch?v={video_id}"
+                        )
+
+                    if not url:
+                        return None
+
+                    return Song(
+                        info.get(
+                            "title",
+                            "Unknown Song"
+                        ),
+                        url,
+                        info.get("thumbnail"),
+                        requester
+                    )
 
                 # -----------------------------------------
                 # FAST SEARCH
                 # -----------------------------------------
 
-                else:
+                options = yt_options()
 
-                    targets = [
-                        f"ytsearch5:{query_text}"
-                    ]
+                # IMPORTANT:
+                # ytsearch1 instead of ytsearch5
+                options["extract_flat"] = True
+                options["skip_download"] = True
+                options["noplaylist"] = True
 
-                for target in targets:
+                with yt_dlp.YoutubeDL(
+                    options
+                ) as ydl:
 
-                    try:
+                    info = ydl.extract_info(
+                        f"ytsearch1:{query_text}",
+                        download=False
+                    )
 
-                        options = yt_options()
+                if not info:
+                    return None
 
-                        options["skip_download"] = True
-                        options["extract_flat"] = False
-                        options["noplaylist"] = True
+                entries = (
+                    info.get("entries")
+                    or []
+                )
 
-                        with yt_dlp.YoutubeDL(
-                            options
-                        ) as ydl:
+                if not entries:
+                    return None
 
-                            info = ydl.extract_info(
-                                target,
-                                download=False
-                            )
+                entry = entries[0]
 
-                        if not info:
-                            continue
+                if not entry:
+                    return None
 
-                        # ---------------------------------
-                        # SEARCH RESULTS
-                        # ---------------------------------
+                title = entry.get("title") or ""
 
-                        if "entries" in info:
+                video_id = entry.get("id")
 
-                            entries = [
-                                x
-                                for x in (
-                                    info.get(
-                                        "entries"
-                                    )
-                                    or []
-                                )
-                                if x
-                            ]
+                if not title or not video_id:
+                    return None
 
-                            if not entries:
-                                continue
+                lower = title.lower()
 
-                            for entry in entries[:5]:
+                if any(
+                    bad in lower
+                    for bad in (
+                        "shorts",
+                        "live stream",
+                        "full movie",
+                    )
+                ):
+                    return None
 
-                                title = (
-                                    entry.get("title")
-                                    or ""
-                                )
+                url = (
+                    entry.get("webpage_url")
+                    or
+                    f"https://www.youtube.com/"
+                    f"watch?v={video_id}"
+                )
 
-                                video_id = (
-                                    entry.get("id")
-                                )
-
-                                if not title or not video_id:
-                                    continue
-
-                                lower = title.lower()
-
-                                if any(
-                                    bad in lower
-                                    for bad in [
-                                        "shorts",
-                                        "live stream",
-                                        "full movie",
-                                    ]
-                                ):
-
-                                    continue
-
-                                webpage_url = (
-                                    entry.get(
-                                        "webpage_url"
-                                    )
-                                    or
-                                    f"https://www.youtube.com/"
-                                    f"watch?v={video_id}"
-                                )
-
-                                if not webpage_url:
-                                    continue
-
-                                return Song(
-                                    title,
-                                    webpage_url,
-                                    entry.get(
-                                        "thumbnail"
-                                    ),
-                                    requester
-                                )
-
-                            continue
-
-                        # ---------------------------------
-                        # DIRECT VIDEO
-                        # ---------------------------------
-
-                        video_id = info.get("id")
-
-                        webpage_url = (
-                            info.get(
-                                "webpage_url"
-                            )
-                            or
-                            info.get(
-                                "original_url"
-                            )
-                        )
-
-                        if not webpage_url and video_id:
-
-                            webpage_url = (
-                                "https://www.youtube.com/"
-                                f"watch?v={video_id}"
-                            )
-
-                        title = (
-                            info.get("title")
-                            or "Unknown Song"
-                        )
-
-                        if webpage_url:
-
-                            return Song(
-                                title,
-                                webpage_url,
-                                info.get(
-                                    "thumbnail"
-                                ),
-                                requester
-                            )
-
-                    except Exception as e:
-
-                        print(
-                            "[MUSIC] [SEARCH] "
-                            f"Target failed: {repr(e)}"
-                        )
-
-                        continue
+                return Song(
+                    title,
+                    url,
+                    entry.get("thumbnail"),
+                    requester
+                )
 
             except Exception as e:
 
                 print(
-                    "[MUSIC] [ERROR] Resolve:",
+                    "[MUSIC] [SEARCH ERROR]",
                     repr(e)
                 )
 
-            return None
+                return None
 
         return await loop.run_in_executor(
             None,
@@ -737,15 +681,13 @@ class MusicPlayer:
 
         def extract():
 
-            # FAST: working client first, fallback second
+            # Primary
             strategies = [
-
                 {
                     "player_client": [
                         "web_embedded"
                     ]
                 },
-
                 {
                     "player_client": [
                         "android_vr"
@@ -753,170 +695,134 @@ class MusicPlayer:
                 },
             ]
 
-            for strategy_index, strategy in enumerate(
+            for index, strategy in enumerate(
                 strategies,
                 1
             ):
 
-                # Only ONE attempt per strategy.
-                for attempt in range(1, 2):
+                try:
 
-                    try:
+                    print(
+                        "[MUSIC] [STREAM]",
+                        f"{index}/{len(strategies)}",
+                        song.title
+                    )
 
-                        print(
-                            "[MUSIC] [STREAM] "
-                            f"Strategy {strategy_index}/"
-                            f"{len(strategies)} "
-                            f"Attempt {attempt}/1: "
-                            f"{song.title}"
+                    options = yt_options()
+
+                    options.update({
+
+                        "skip_download": True,
+
+                        "noplaylist": True,
+
+                        "extract_flat": False,
+
+                        "format": (
+                            "bestaudio[protocol^=http]"
+                            "/bestaudio"
+                        ),
+
+                    })
+
+                    options["extractor_args"] = {
+                        "youtube": strategy
+                    }
+
+                    with yt_dlp.YoutubeDL(
+                        options
+                    ) as ydl:
+
+                        info = ydl.extract_info(
+                            song.url,
+                            download=False
                         )
 
-                        options = yt_options()
+                    if not info:
+                        continue
 
-                        options["extractor_args"] = {
-                            "youtube": strategy
-                        }
+                    if "entries" in info:
 
-                        options.update({
-
-                            "skip_download": True,
-
-                            "noplaylist": True,
-
-                            "extract_flat": False,
-
-                            "format": (
-                                "bestaudio[protocol^=http]"
-                                "/bestaudio"
-                            ),
-                        })
-
-                        with yt_dlp.YoutubeDL(
-                            options
-                        ) as ydl:
-
-                            info = ydl.extract_info(
-                                song.url,
-                                download=False
-                            )
-
-                        if not info:
-                            continue
-
-                        if "entries" in info:
-
-                            entries = [
-                                x
-                                for x in (
-                                    info.get(
-                                        "entries"
-                                    )
-                                    or []
-                                )
-                                if x
-                            ]
-
-                            if not entries:
-                                continue
-
-                            info = entries[0]
-
-                        stream_url = info.get(
-                            "url"
-                        )
-
-                        if not stream_url:
-
-                            formats = (
-                                info.get(
-                                    "formats"
-                                )
+                        entries = [
+                            x
+                            for x in (
+                                info.get("entries")
                                 or []
                             )
+                            if x
+                        ]
 
-                            audio_formats = [
-
-                                f
-
-                                for f in formats
-
-                                if f.get("url")
-
-                                and
-                                f.get("acodec")
-                                not in (
-                                    None,
-                                    "none"
-                                )
-
-                                and
-                                f.get("vcodec")
-                                in (
-                                    None,
-                                    "none"
-                                )
-                            ]
-
-                            if audio_formats:
-
-                                audio_formats.sort(
-                                    key=lambda f:
-                                    (
-                                        f.get("abr")
-                                        or 0
-                                    ),
-                                    reverse=True
-                                )
-
-                                stream_url = (
-                                    audio_formats[0]
-                                    .get("url")
-                                )
-
-                        if not stream_url:
+                        if not entries:
                             continue
 
-                        headers = dict(
-                            info.get(
-                                "http_headers"
-                            )
-                            or {}
+                        info = entries[0]
+
+                    stream_url = info.get("url")
+
+                    if not stream_url:
+
+                        formats = (
+                            info.get("formats")
+                            or []
                         )
 
-                        if not headers.get(
-                            "User-Agent"
-                        ):
+                        audio_formats = [
+                            f
+                            for f in formats
+                            if f.get("url")
+                            and f.get("acodec")
+                            not in (None, "none")
+                            and f.get("vcodec")
+                            in (None, "none")
+                        ]
 
-                            headers[
-                                "User-Agent"
-                            ] = USER_AGENT
+                        if audio_formats:
 
-                        if not headers.get(
-                            "Referer"
-                        ):
-
-                            headers[
-                                "Referer"
-                            ] = (
-                                "https://www.youtube.com/"
+                            audio_formats.sort(
+                                key=lambda f:
+                                (
+                                    f.get("abr")
+                                    or 0
+                                ),
+                                reverse=True
                             )
 
-                        return {
-                            "url": stream_url,
-                            "headers": headers
-                        }
+                            stream_url = (
+                                audio_formats[0]
+                                .get("url")
+                            )
 
-                    except Exception as e:
+                    if not stream_url:
+                        continue
 
-                        print(
-                            "[MUSIC] [STREAM] "
-                            f"Strategy {strategy_index} "
-                            f"attempt {attempt} failed:",
-                            repr(e)
+                    headers = dict(
+                        info.get(
+                            "http_headers"
                         )
+                        or {}
+                    )
 
-                        # Very small fallback delay.
-                        time.sleep(0.15)
+                    headers.setdefault(
+                        "User-Agent",
+                        USER_AGENT
+                    )
+
+                    headers.setdefault(
+                        "Referer",
+                        "https://www.youtube.com/"
+                    )
+
+                    return {
+                        "url": stream_url,
+                        "headers": headers
+                    }
+
+                except Exception as e:
+
+                    print(
+                        "[MUSIC] [STREAM ERROR]",
+                        repr(e)
+                    )
 
             return None
 
@@ -934,31 +840,14 @@ class MusicPlayer:
 
         loop = asyncio.get_running_loop()
 
-        categories = [
-
+        # Only one query instead of 20 random queries.
+        # This removes a lot of autoplay delay.
+        queries = [
             "popular Hindi songs",
-            "popular Bollywood songs",
             "Punjabi hit songs",
+            "Bollywood hits",
             "English pop hits",
-            "Indian pop songs",
-            "Arijit Singh popular songs",
-            "Atif Aslam popular songs",
-            "AP Dhillon popular songs",
-            "Shubh popular songs",
-            "Karan Aujla popular songs",
-            "Badshah popular songs",
-            "KK Bollywood songs",
-            "2000s Hindi songs",
-            "2010s Bollywood hits",
-            "latest Indian songs",
-            "popular music hits",
-            "Hindi chart songs",
-            "Punjabi chart songs",
-            "English chart songs",
-            "Bollywood classics",
         ]
-
-        random.shuffle(categories)
 
         used_urls = set(
             self.autoplay_history
@@ -969,37 +858,27 @@ class MusicPlayer:
         )
 
         if self.current:
-
             used_urls.add(
                 self.current.url
             )
 
         def extract():
 
-            options = yt_options()
-
-            options["skip_download"] = True
-            options["extract_flat"] = True
-            options["noplaylist"] = True
-
-            options["extractor_args"] = {
-                "youtube": {
-                    "player_client": [
-                        "web_embedded"
-                    ]
-                }
-            }
-
-            for query in categories:
+            for query in queries:
 
                 try:
+
+                    options = yt_options()
+
+                    options["extract_flat"] = True
+                    options["skip_download"] = True
 
                     with yt_dlp.YoutubeDL(
                         options
                     ) as ydl:
 
                         info = ydl.extract_info(
-                            f"ytsearch20:{query}",
+                            f"ytsearch10:{query}",
                             download=False
                         )
 
@@ -1011,34 +890,15 @@ class MusicPlayer:
                         or []
                     )
 
-                    candidates = []
-
-                    recent_urls = set(
-                        list(
-                            self.autoplay_history
-                        )[-30:]
-                    )
-
                     for entry in entries:
 
                         if not entry:
                             continue
 
-                        video_id = entry.get(
-                            "id"
-                        )
+                        video_id = entry.get("id")
 
                         if not video_id:
                             continue
-
-                        url = (
-                            entry.get(
-                                "webpage_url"
-                            )
-                            or
-                            f"https://www.youtube.com/"
-                            f"watch?v={video_id}"
-                        )
 
                         title = (
                             entry.get("title")
@@ -1048,29 +908,28 @@ class MusicPlayer:
                         if not title:
                             continue
 
+                        url = (
+                            entry.get("webpage_url")
+                            or
+                            f"https://www.youtube.com/"
+                            f"watch?v={video_id}"
+                        )
+
                         if url in used_urls:
                             continue
 
-                        if self.current:
-
-                            if is_same_song(
-                                title,
-                                self.current.title
-                            ):
-
-                                continue
-
-                        if url in recent_urls:
+                        if self.current and is_same_song(
+                            title,
+                            self.current.title
+                        ):
                             continue
 
                         lower = title.lower()
 
-                        bad_words = [
+                        bad_words = (
                             "slowed",
-                            "slowed + reverb",
-                            "slowed and reverb",
+                            "reverb",
                             "sped up",
-                            "speed up",
                             "nightcore",
                             "8d audio",
                             "remix",
@@ -1081,53 +940,31 @@ class MusicPlayer:
                             "bass boosted",
                             "live concert",
                             "shorts",
-                        ]
+                        )
 
                         if any(
                             word in lower
                             for word in bad_words
                         ):
-
                             continue
 
-                        candidates.append(
+                        return Song(
+                            title,
+                            url,
+                            entry.get("thumbnail"),
                             (
-                                entry,
-                                url,
-                                title
+                                self.current.requester
+                                if self.current
+                                else None
                             )
                         )
-
-                    if not candidates:
-                        continue
-
-                    random.shuffle(
-                        candidates
-                    )
-
-                    entry, url, title = (
-                        candidates[0]
-                    )
-
-                    return Song(
-                        title,
-                        url,
-                        entry.get(
-                            "thumbnail"
-                        ),
-                        self.current.requester
-                        if self.current
-                        else None
-                    )
 
                 except Exception as e:
 
                     print(
-                        "[MUSIC] [AUTOPLAY] "
-                        f"Search failed: {repr(e)}"
+                        "[MUSIC] [AUTOPLAY ERROR]",
+                        repr(e)
                     )
-
-                    continue
 
             return None
 
@@ -1147,16 +984,8 @@ class MusicPlayer:
             )
 
             print(
-                "[MUSIC] [AUTOPLAY] "
-                "DIFFERENT SONG:",
+                "[MUSIC] [AUTOPLAY]",
                 song.title
-            )
-
-        else:
-
-            print(
-                "[MUSIC] [AUTOPLAY] "
-                "No different song found."
             )
 
         return song
@@ -1175,7 +1004,6 @@ class MusicPlayer:
                 or
                 not self.voice.is_connected()
             ):
-
                 return
 
             if self.starting:
@@ -1186,44 +1014,26 @@ class MusicPlayer:
             try:
 
                 # -----------------------------------------
-                # SELECT
+                # SELECT SONG
                 # -----------------------------------------
 
-                if (
-                    self.loop
-                    and
-                    self.current
-                ):
+                if self.loop and self.current:
 
                     song = self.current
 
                 elif self.queue:
 
                     song = self.queue.popleft()
-
                     self.current = song
 
-                elif (
-                    self.autoplay
-                    and
-                    self.current
-                ):
+                elif self.autoplay and self.current:
 
-                    print(
-                        "[MUSIC] [AUTOPLAY] "
-                        "Finding completely different song..."
-                    )
-
-                    song = (
-                        await self.autoplay_song()
-                    )
+                    song = await self.autoplay_song()
 
                     if not song:
 
                         self.current = None
-
                         await self.clear_voice_status()
-
                         return
 
                     self.current = song
@@ -1231,17 +1041,14 @@ class MusicPlayer:
                 else:
 
                     self.current = None
-
                     await self.clear_voice_status()
-
                     return
 
                 # -----------------------------------------
-                # TOKEN
+                # NEW TOKEN
                 # -----------------------------------------
 
                 self.play_token += 1
-
                 token = self.play_token
 
                 print(
@@ -1252,7 +1059,7 @@ class MusicPlayer:
                 )
 
                 # -----------------------------------------
-                # STOP OLD
+                # STOP OLD SOURCE
                 # -----------------------------------------
 
                 if (
@@ -1263,68 +1070,32 @@ class MusicPlayer:
 
                     self.voice.stop()
 
-                    await asyncio.sleep(
-                        0.05
-                    )
-
                 # -----------------------------------------
-                # STREAM
+                # GET STREAM
                 # -----------------------------------------
 
-                stream = None
-
-                # Reduced from 3 -> 2 attempts.
-                for attempt in range(1, 3):
-
-                    stream = (
-                        await self.get_audio_stream(
-                            song
-                        )
-                    )
-
-                    if stream:
-                        break
-
-                    print(
-                        "[MUSIC] [RETRY] "
-                        f"Stream {attempt}/2 failed."
-                    )
-
-                    await asyncio.sleep(
-                        0.25
-                    )
+                stream = await self.get_audio_stream(
+                    song
+                )
 
                 if not stream:
 
                     print(
                         "[MUSIC] [ERROR] "
-                        "Could not obtain audio stream:",
+                        "Audio stream unavailable:",
                         song.title
                     )
 
                     self.current = None
 
-                    if self.queue:
+                    self.starting = False
 
-                        self.starting = False
-
-                        asyncio.create_task(
-                            self.play_next()
-                        )
-
-                        return
-
-                    if self.autoplay:
-
-                        self.starting = False
+                    # Immediately try next
+                    if self.queue or self.autoplay:
 
                         asyncio.create_task(
                             self.play_next()
                         )
-
-                        return
-
-                    await self.clear_voice_status()
 
                     return
 
@@ -1342,34 +1113,24 @@ class MusicPlayer:
                     or {}
                 )
 
-                if not headers.get(
-                    "User-Agent"
-                ):
+                headers.setdefault(
+                    "User-Agent",
+                    USER_AGENT
+                )
 
-                    headers[
-                        "User-Agent"
-                    ] = USER_AGENT
-
-                if not headers.get(
-                    "Referer"
-                ):
-
-                    headers[
-                        "Referer"
-                    ] = (
-                        "https://www.youtube.com/"
-                    )
+                headers.setdefault(
+                    "Referer",
+                    "https://www.youtube.com/"
+                )
 
                 header_lines = [
-                    f"{key}: {value}"
-                    for key, value in headers.items()
-                    if value
+                    f"{k}: {v}"
+                    for k, v in headers.items()
+                    if v
                 ]
 
                 ffmpeg_headers = (
-                    "\r\n".join(
-                        header_lines
-                    )
+                    "\r\n".join(header_lines)
                     + "\r\n"
                 )
 
@@ -1385,8 +1146,8 @@ class MusicPlayer:
                     "-reconnect_on_network_error 1 "
                     "-reconnect_on_http_error "
                     "403,404,408,429,500,502,503,504 "
-                    "-reconnect_delay_max 5 "
-                    "-rw_timeout 15000000 "
+                    "-reconnect_delay_max 3 "
+                    "-rw_timeout 10000000 "
                     "-headers "
                     f"\"{ffmpeg_headers}\""
                 )
@@ -1418,12 +1179,9 @@ class MusicPlayer:
                 except Exception as e:
 
                     print(
-                        "[MUSIC] [ERROR] "
-                        "FFmpeg source:",
+                        "[MUSIC] [FFMPEG ERROR]",
                         repr(e)
                     )
-
-                    self.starting = False
 
                     return
 
@@ -1445,18 +1203,21 @@ class MusicPlayer:
                         future = (
                             asyncio
                             .run_coroutine_threadsafe(
-                                self.finished(
-                                    token
-                                ),
+                                self.finished(token),
                                 self.bot.loop
                             )
                         )
 
+                        def callback(f):
+
+                            try:
+                                f.exception()
+
+                            except Exception:
+                                pass
+
                         future.add_done_callback(
-                            lambda f:
-                            f.exception()
-                            if not f.cancelled()
-                            else None
+                            callback
                         )
 
                     except Exception as e:
@@ -1493,8 +1254,7 @@ class MusicPlayer:
                 except Exception as e:
 
                     print(
-                        "[MUSIC] [ERROR] "
-                        "voice.play:",
+                        "[MUSIC] [ERROR] voice.play:",
                         repr(e)
                     )
 
@@ -1515,10 +1275,6 @@ class MusicPlayer:
                 )
 
                 await self.send_now_playing()
-
-            except asyncio.CancelledError:
-
-                raise
 
             except Exception as e:
 
@@ -1541,9 +1297,7 @@ class MusicPlayer:
         if token != self.play_token:
             return
 
-        await asyncio.sleep(
-            0.2
-        )
+        await asyncio.sleep(0.05)
 
         if token != self.play_token:
             return
@@ -1553,7 +1307,6 @@ class MusicPlayer:
             or
             not self.voice.is_connected()
         ):
-
             return
 
         if (
@@ -1561,12 +1314,13 @@ class MusicPlayer:
             or
             self.voice.is_paused()
         ):
-
             return
 
         print(
-            "[MUSIC] [FINISHED] "
-            "Current song ended."
+            "[MUSIC] [FINISHED]",
+            self.current.title
+            if self.current
+            else "Unknown"
         )
 
         await self.play_next()
@@ -1583,7 +1337,6 @@ class MusicPlayer:
             or
             not self.current
         ):
-
             return
 
         song = self.current
@@ -1662,7 +1415,7 @@ class MusicPlayer:
 
 
 # =========================================================
-# BUTTON VIEW
+# CONTROL VIEW
 # =========================================================
 
 class MusicControlView(
@@ -1679,7 +1432,7 @@ class MusicControlView(
 
 
     # =====================================================
-    # PAUSE
+    # PAUSE / RESUME
     # =====================================================
 
     @discord.ui.button(
@@ -1754,13 +1507,19 @@ class MusicControlView(
                 ephemeral=True
             )
 
-        await interaction.response.defer()
-
         if player.skip_lock.locked():
-            return
+
+            return await interaction.response.send_message(
+                "⚠️ Skip already processing.",
+                ephemeral=True
+            )
+
+        await interaction.response.defer()
 
         async with player.skip_lock:
 
+            # Invalidate BEFORE stopping.
+            # Prevents old callback from starting another song.
             player.invalidate()
 
             if (
@@ -1771,10 +1530,8 @@ class MusicControlView(
 
                 player.voice.stop()
 
-                await asyncio.sleep(
-                    0.05
-                )
-
+            # Important:
+            # play_next gets the lock itself.
             player.starting = False
 
             await player.play_next()
@@ -1795,9 +1552,7 @@ class MusicControlView(
         button
     ):
 
-        self.player.loop = (
-            not self.player.loop
-        )
+        self.player.loop = not self.player.loop
 
         status = (
             "🟢 ON"
@@ -1874,7 +1629,6 @@ class MusicControlView(
         player.starting = False
 
         player.autoplay_history.clear()
-
         player.play_history.clear()
 
         if player.voice:
@@ -1889,14 +1643,8 @@ class MusicControlView(
 
                 player.voice.stop()
 
-                await asyncio.sleep(
-                    0.05
-                )
-
             try:
-
                 await player.voice.disconnect()
-
             except Exception:
                 pass
 
@@ -1930,7 +1678,6 @@ class Music(commands.Cog):
         self.bot = bot
 
         self.players = {}
-
         self.play_command_locks = {}
 
 
@@ -2018,11 +1765,9 @@ class Music(commands.Cog):
                 ==
                 request_key
                 and
-                now
-                -
+                now -
                 player.last_play_request_time
-                <
-                3
+                < 3
             ):
 
                 return await ctx.send(
@@ -2030,29 +1775,20 @@ class Music(commands.Cog):
                     delete_after=3
                 )
 
-            player.last_play_request = (
-                request_key
-            )
+            player.last_play_request = request_key
+            player.last_play_request_time = now
 
-            player.last_play_request_time = (
-                now
-            )
+            player.text_channel = ctx.channel
 
-            player.text_channel = (
-                ctx.channel
-            )
-
-            # ---------------------------------------------
+            # -----------------------------------------
             # VOICE
-            # ---------------------------------------------
+            # -----------------------------------------
 
             try:
 
                 if ctx.voice_client:
 
-                    player.voice = (
-                        ctx.voice_client
-                    )
+                    player.voice = ctx.voice_client
 
                     if (
                         player.voice.channel
@@ -2081,17 +1817,30 @@ class Music(commands.Cog):
                     delete_after=5
                 )
 
-            # ---------------------------------------------
+            # -----------------------------------------
             # LOADING
-            # ---------------------------------------------
+            # -----------------------------------------
 
             loading = await ctx.send(
                 "🔎 **Searching YouTube...**"
             )
 
+            started = time.monotonic()
+
             song = await player.resolve_song(
                 query,
                 ctx.author
+            )
+
+            search_time = (
+                time.monotonic()
+                - started
+            )
+
+            print(
+                f"[MUSIC] [SEARCH] "
+                f"{search_time:.2f}s -> "
+                f"{query}"
             )
 
             if not song:
@@ -2101,8 +1850,7 @@ class Music(commands.Cog):
                     await loading.edit(
                         content=(
                             "❌ **YouTube could not find "
-                            "this song.** Try another "
-                            "song name or use a YouTube URL."
+                            "this song.**"
                         )
                     )
 
@@ -2112,17 +1860,15 @@ class Music(commands.Cog):
                 return
 
             try:
-
                 await loading.delete()
-
             except Exception:
                 pass
 
             player.last_manual_query = query
 
-            # ---------------------------------------------
+            # -----------------------------------------
             # STATE
-            # ---------------------------------------------
+            # -----------------------------------------
 
             was_playing = (
                 player.starting
@@ -2142,10 +1888,6 @@ class Music(commands.Cog):
                 bool(player.queue)
             )
 
-            # ---------------------------------------------
-            # MANUAL SONG HISTORY
-            # ---------------------------------------------
-
             player.play_history.append(
                 song.url
             )
@@ -2154,9 +1896,9 @@ class Music(commands.Cog):
                 song
             )
 
-            # ---------------------------------------------
+            # -----------------------------------------
             # QUEUE
-            # ---------------------------------------------
+            # -----------------------------------------
 
             if was_playing:
 
@@ -2189,6 +1931,10 @@ class Music(commands.Cog):
                     embed=embed,
                     delete_after=8
                 )
+
+            # -----------------------------------------
+            # START
+            # -----------------------------------------
 
             await player.play_next()
 
@@ -2236,18 +1982,14 @@ class Music(commands.Cog):
 
                 player.voice.stop()
 
-                await asyncio.sleep(
-                    0.05
-                )
-
             player.starting = False
 
             await player.play_next()
 
+        # Delete prefix command
         try:
 
             if ctx.message:
-
                 await ctx.message.delete()
 
         except Exception:
@@ -2343,7 +2085,6 @@ class Music(commands.Cog):
         player.starting = False
 
         player.autoplay_history.clear()
-
         player.play_history.clear()
 
         if player.voice:
@@ -2358,14 +2099,8 @@ class Music(commands.Cog):
 
                 player.voice.stop()
 
-                await asyncio.sleep(
-                    0.05
-                )
-
             try:
-
                 await player.voice.disconnect()
-
             except Exception:
                 pass
 
@@ -2452,9 +2187,7 @@ class Music(commands.Cog):
             ctx.guild.id
         )
 
-        player.volume = (
-            amount / 100
-        )
+        player.volume = amount / 100
 
         if (
             player.voice
@@ -2469,9 +2202,7 @@ class Music(commands.Cog):
                 discord.PCMVolumeTransformer
             ):
 
-                source.volume = (
-                    amount / 100
-                )
+                source.volume = amount / 100
 
         await ctx.send(
             f"🔊 **Volume set to {amount}%**",
@@ -2493,9 +2224,7 @@ class Music(commands.Cog):
             ctx.guild.id
         )
 
-        player.loop = (
-            not player.loop
-        )
+        player.loop = not player.loop
 
         status = (
             "🟢 ON"
@@ -2523,9 +2252,7 @@ class Music(commands.Cog):
             ctx.guild.id
         )
 
-        player.autoplay = (
-            not player.autoplay
-        )
+        player.autoplay = not player.autoplay
 
         status = (
             "🟢 ON"
@@ -2588,5 +2315,5 @@ async def setup(bot):
     )
 
     print(
-        "[MUSIC] [OK] Music cog loaded successfully."
+        "[MUSIC] [OK] Ultra-fast music cog loaded."
     )
