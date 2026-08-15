@@ -1,8 +1,8 @@
+cookies.txt
+youtube_cookies.txt
 __pycache__/
 *.pyc
 .env
 venv/
-.venv/
-cookies.txt
-*.mp3
-*.mp4
+
+
