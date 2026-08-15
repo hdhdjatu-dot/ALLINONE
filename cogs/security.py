@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 from datetime import timedelta
 
 import discord
@@ -12,6 +13,7 @@ from discord.ext import commands
 # ============================================================
 
 DATA_FILE = "security_data.json"
+GALI_FILE = "gali_data.json"
 
 
 # ============================================================
@@ -46,22 +48,14 @@ DEFAULT_SETTINGS = {
     "antimod": True,
     "antispam": True,
     "duplicate": True,
-
+    "antigali": True,
     "whitelist_music": [],
     "whitelist_bots": [],
-
-    # ========================================================
-    # GALI / PROFANITY SYSTEM
-    # ========================================================
-
-    "gali_enabled": True,
-
-    "gali_words": [],
 }
 
 
 # ============================================================
-# DATA LOAD
+# SECURITY DATA LOAD
 # ============================================================
 
 def load_data():
@@ -79,10 +73,10 @@ def load_data():
 
             data = json.load(f)
 
-            if isinstance(data, dict):
-                return data
+        if isinstance(data, dict):
+            return data
 
-            return {}
+        return {}
 
     except Exception as e:
 
@@ -95,7 +89,7 @@ def load_data():
 
 
 # ============================================================
-# DATA SAVE
+# SECURITY DATA SAVE
 # ============================================================
 
 def save_data(data):
@@ -124,6 +118,69 @@ def save_data(data):
 
 
 # ============================================================
+# GALI DATA LOAD
+# ============================================================
+
+def load_gali_data():
+
+    if not os.path.exists(GALI_FILE):
+        return {}
+
+    try:
+
+        with open(
+            GALI_FILE,
+            "r",
+            encoding="utf-8"
+        ) as f:
+
+            data = json.load(f)
+
+        if isinstance(data, dict):
+            return data
+
+        return {}
+
+    except Exception as e:
+
+        print(
+            "[GALI] DATA LOAD ERROR:",
+            repr(e)
+        )
+
+        return {}
+
+
+# ============================================================
+# GALI DATA SAVE
+# ============================================================
+
+def save_gali_data(data):
+
+    try:
+
+        with open(
+            GALI_FILE,
+            "w",
+            encoding="utf-8"
+        ) as f:
+
+            json.dump(
+                data,
+                f,
+                indent=4,
+                ensure_ascii=False
+            )
+
+    except Exception as e:
+
+        print(
+            "[GALI] DATA SAVE ERROR:",
+            repr(e)
+        )
+
+
+# ============================================================
 # SECURITY COG
 # ============================================================
 
@@ -132,7 +189,11 @@ class Security(commands.Cog):
     def __init__(self, bot):
 
         self.bot = bot
+
         self.data = load_data()
+
+        self.gali_data = load_gali_data()
+
         self.duplicate_cache = {}
 
         print(
@@ -159,7 +220,9 @@ class Security(commands.Cog):
 
                 if isinstance(value, list):
 
-                    self.data[guild_id][key] = list(value)
+                    self.data[guild_id][key] = list(
+                        value
+                    )
 
                 else:
 
@@ -177,7 +240,9 @@ class Security(commands.Cog):
 
                 if isinstance(value, list):
 
-                    settings[key] = list(value)
+                    settings[key] = list(
+                        value
+                    )
 
                 else:
 
@@ -186,7 +251,7 @@ class Security(commands.Cog):
                 changed = True
 
         # ====================================================
-        # MUSIC WHITELIST
+        # MUSIC WHITELIST NORMALIZE
         # ====================================================
 
         if not isinstance(
@@ -195,6 +260,7 @@ class Security(commands.Cog):
         ):
 
             settings["whitelist_music"] = []
+
             changed = True
 
         cleaned_music = []
@@ -215,16 +281,19 @@ class Security(commands.Cog):
                 changed = True
 
         cleaned_music = list(
-            dict.fromkeys(cleaned_music)
+            dict.fromkeys(
+                cleaned_music
+            )
         )
 
         if cleaned_music != settings["whitelist_music"]:
 
             settings["whitelist_music"] = cleaned_music
+
             changed = True
 
         # ====================================================
-        # BOT WHITELIST
+        # BOT WHITELIST NORMALIZE
         # ====================================================
 
         if not isinstance(
@@ -233,6 +302,7 @@ class Security(commands.Cog):
         ):
 
             settings["whitelist_bots"] = []
+
             changed = True
 
         cleaned_bots = []
@@ -253,65 +323,22 @@ class Security(commands.Cog):
                 changed = True
 
         cleaned_bots = list(
-            dict.fromkeys(cleaned_bots)
+            dict.fromkeys(
+                cleaned_bots
+            )
         )
 
         if cleaned_bots != settings["whitelist_bots"]:
 
             settings["whitelist_bots"] = cleaned_bots
-            changed = True
 
-        # ====================================================
-        # GALI WORDS
-        # ====================================================
-
-        if not isinstance(
-            settings.get("gali_words"),
-            list
-        ):
-
-            settings["gali_words"] = []
-            changed = True
-
-        cleaned_gali = []
-
-        for word in settings["gali_words"]:
-
-            if not isinstance(word, str):
-                changed = True
-                continue
-
-            word = word.strip().lower()
-
-            if not word:
-                changed = True
-                continue
-
-            cleaned_gali.append(word)
-
-        cleaned_gali = list(
-            dict.fromkeys(cleaned_gali)
-        )
-
-        if cleaned_gali != settings["gali_words"]:
-
-            settings["gali_words"] = cleaned_gali
-            changed = True
-
-        # ====================================================
-        # GALI ENABLE
-        # ====================================================
-
-        if not isinstance(
-            settings.get("gali_enabled"),
-            bool
-        ):
-
-            settings["gali_enabled"] = True
             changed = True
 
         if changed:
-            save_data(self.data)
+
+            save_data(
+                self.data
+            )
 
         return settings
 
@@ -334,6 +361,7 @@ class Security(commands.Cog):
         try:
 
             if await self.bot.is_owner(user):
+
                 return True
 
         except Exception as e:
@@ -362,12 +390,10 @@ class Security(commands.Cog):
 
             return False
 
-        for role in member.roles:
-
-            if role.id in OWNER_ROLE_IDS:
-                return True
-
-        return False
+        return any(
+            role.id in OWNER_ROLE_IDS
+            for role in member.roles
+        )
 
 
     # ========================================================
@@ -395,23 +421,26 @@ class Security(commands.Cog):
         # SERVER OWNER
 
         if member.id == member.guild.owner_id:
+
             return True
 
         # BOT OWNER
 
         if await self.is_bot_owner(member):
+
             return True
 
         # OWNER ROLE
 
         if self.has_owner_role(member):
+
             return True
 
         return False
 
 
     # ========================================================
-    # OWNER ONLY ERROR
+    # OWNER ONLY MESSAGE
     # ========================================================
 
     async def owner_only_message(
@@ -449,29 +478,131 @@ class Security(commands.Cog):
 
 
     # ========================================================
-    # GALI WORD MATCHER
+    # GALI HELPERS
     # ========================================================
 
-    def contains_gali(
+    def get_gali_words(
         self,
-        content,
-        gali_words
+        guild_id
+    ):
+
+        guild_id = str(
+            guild_id
+        )
+
+        words = self.gali_data.get(
+            guild_id,
+            []
+        )
+
+        if not isinstance(
+            words,
+            list
+        ):
+
+            words = []
+
+        cleaned = []
+
+        for word in words:
+
+            if not isinstance(
+                word,
+                str
+            ):
+
+                continue
+
+            word = word.strip().lower()
+
+            if word:
+
+                cleaned.append(
+                    word
+                )
+
+        cleaned = list(
+            dict.fromkeys(
+                cleaned
+            )
+        )
+
+        if cleaned != words:
+
+            self.gali_data[guild_id] = cleaned
+
+            save_gali_data(
+                self.gali_data
+            )
+
+        return cleaned
+
+
+    # ========================================================
+    # CHECK GALI
+    # ========================================================
+
+    def find_gali(
+        self,
+        guild_id,
+        content
     ):
 
         if not content:
             return None
 
-        content_lower = content.lower()
+        words = self.get_gali_words(
+            guild_id
+        )
 
-        for word in gali_words:
+        if not words:
+            return None
 
-            word = str(word).strip().lower()
+        content = content.lower()
+
+        for word in words:
+
+            word = word.strip().lower()
 
             if not word:
                 continue
 
-            if word in content_lower:
-                return word
+            # Multi-word gali / phrase
+
+            if " " in word:
+
+                if word in content:
+
+                    return word
+
+                continue
+
+            # Single word
+            #
+            # Boundary check prevents:
+            # "ass" matching "class"
+
+            try:
+
+                pattern = (
+                    r"(?<!\w)"
+                    + re.escape(word)
+                    + r"(?!\w)"
+                )
+
+                if re.search(
+                    pattern,
+                    content,
+                    flags=re.IGNORECASE
+                ):
+
+                    return word
+
+            except Exception:
+
+                if word in content:
+
+                    return word
 
         return None
 
@@ -520,7 +651,7 @@ class Security(commands.Cog):
             ("🔨", "ANTI-MOD", "antimod"),
             ("💬", "ANTI-SPAM", "antispam"),
             ("♻️", "DUPLICATE GUARD", "duplicate"),
-            ("🤬", "GALI FILTER", "gali_enabled"),
+            ("🤬", "ANTI-GALI", "antigali")
 
         ]
 
@@ -578,7 +709,9 @@ class Security(commands.Cog):
                 )
             )
 
-            await asyncio.sleep(0.16)
+            await asyncio.sleep(
+                0.16
+            )
 
         completed = []
 
@@ -681,11 +814,15 @@ class Security(commands.Cog):
                     )
                 )
 
-                await asyncio.sleep(0.13)
+                await asyncio.sleep(
+                    0.13
+                )
 
             settings[key] = enabled
 
-            save_data(self.data)
+            save_data(
+                self.data
+            )
 
             completed.append(
                 (
@@ -741,7 +878,9 @@ class Security(commands.Cog):
                 )
             )
 
-            await asyncio.sleep(0.45)
+            await asyncio.sleep(
+                0.45
+            )
 
         final_text = (
             "SYSTEM ONLINE"
@@ -781,7 +920,7 @@ class Security(commands.Cog):
                     "║       ✓ ANTI-MOD             ║\n"
                     "║       ✓ ANTI-SPAM            ║\n"
                     "║       ✓ DUPLICATE GUARD      ║\n"
-                    "║       ✓ GALI FILTER          ║\n"
+                    "║       ✓ ANTI-GALI            ║\n"
 
                     "║                              ║\n"
 
@@ -797,7 +936,9 @@ class Security(commands.Cog):
                 )
             )
 
-            await asyncio.sleep(0.18)
+            await asyncio.sleep(
+                0.18
+            )
 
         await asyncio.sleep(5)
 
@@ -808,7 +949,7 @@ class Security(commands.Cog):
 
 
     # ========================================================
-    # ENABLE
+    # ANTINUKE ENABLE
     # ========================================================
 
     @commands.hybrid_command(
@@ -821,8 +962,13 @@ class Security(commands.Cog):
         ctx
     ):
 
-        if not await self.is_owner(ctx.author):
-            return await self.owner_only_message(ctx)
+        if not await self.is_owner(
+            ctx.author
+        ):
+
+            return await self.owner_only_message(
+                ctx
+            )
 
         await self.security_animation(
             ctx,
@@ -831,7 +977,7 @@ class Security(commands.Cog):
 
 
     # ========================================================
-    # DISABLE
+    # ANTINUKE DISABLE
     # ========================================================
 
     @commands.hybrid_command(
@@ -844,252 +990,17 @@ class Security(commands.Cog):
         ctx
     ):
 
-        if not await self.is_owner(ctx.author):
-            return await self.owner_only_message(ctx)
+        if not await self.is_owner(
+            ctx.author
+        ):
+
+            return await self.owner_only_message(
+                ctx
+            )
 
         await self.security_animation(
             ctx,
             False
-        )
-
-
-    # ========================================================
-    # ADD GALI
-    # ========================================================
-
-    @commands.hybrid_command(
-        name="addgali",
-        description="Add a word to the HSL-CORP gali filter"
-    )
-    @commands.guild_only()
-    async def addgali(
-        self,
-        ctx,
-        *,
-        word: str
-    ):
-
-        if not await self.is_owner(ctx):
-            return await self.owner_only_message(ctx)
-
-        word = word.strip().lower()
-
-        if not word:
-            return await ctx.send(
-                "❌ **Gali word empty nahi ho sakta.**",
-                delete_after=5
-            )
-
-        if len(word) > 100:
-            return await ctx.send(
-                "❌ Word bahut long hai.",
-                delete_after=5
-            )
-
-        settings = self.get_settings(
-            ctx.guild.id
-        )
-
-        words = settings.setdefault(
-            "gali_words",
-            []
-        )
-
-        if word in words:
-            return await ctx.send(
-                f"🟡 `{word}` **already gali filter mein hai.**",
-                delete_after=5
-            )
-
-        words.append(word)
-
-        settings["gali_words"] = list(
-            dict.fromkeys(words)
-        )
-
-        save_data(self.data)
-
-        await ctx.send(
-            f"🤬 `{word}` **gali filter mein add ho gaya.**\n"
-            "🛡️ Ab ye word detect hote hi message remove hoga "
-            "aur user ko timeout milega.",
-            delete_after=7
-        )
-
-
-    # ========================================================
-    # REMOVE GALI
-    # ========================================================
-
-    @commands.hybrid_command(
-        name="removegali",
-        description="Remove a word from the gali filter"
-    )
-    @commands.guild_only()
-    async def removegali(
-        self,
-        ctx,
-        *,
-        word: str
-    ):
-
-        if not await self.is_owner(ctx):
-            return await self.owner_only_message(ctx)
-
-        word = word.strip().lower()
-
-        settings = self.get_settings(
-            ctx.guild.id
-        )
-
-        words = settings.setdefault(
-            "gali_words",
-            []
-        )
-
-        if word not in words:
-
-            return await ctx.send(
-                f"🟡 `{word}` **gali filter mein nahi hai.**",
-                delete_after=5
-            )
-
-        words.remove(word)
-
-        save_data(self.data)
-
-        await ctx.send(
-            f"🔴 `{word}` **gali filter se remove ho gaya.**",
-            delete_after=6
-        )
-
-
-    # ========================================================
-    # GALI LIST
-    # ========================================================
-
-    @commands.hybrid_command(
-        name="gali",
-        description="Show or clear the HSL-CORP gali filter"
-    )
-    @commands.guild_only()
-    async def gali(
-        self,
-        ctx,
-        action: str = "list"
-    ):
-
-        if not await self.is_owner(ctx):
-            return await self.owner_only_message(ctx)
-
-        action = str(
-            action
-        ).lower().strip()
-
-        settings = self.get_settings(
-            ctx.guild.id
-        )
-
-        words = settings.get(
-            "gali_words",
-            []
-        )
-
-        # ====================================================
-        # CLEAR
-        # ====================================================
-
-        if action in (
-            "clear",
-            "delete",
-            "reset"
-        ):
-
-            if not words:
-
-                return await ctx.send(
-                    "🟡 **Gali filter already empty hai.**",
-                    delete_after=5
-                )
-
-            count = len(words)
-
-            settings["gali_words"] = []
-
-            save_data(self.data)
-
-            return await ctx.send(
-                f"🗑️ **{count} gali words remove kar diye gaye.**",
-                delete_after=6
-            )
-
-        # ====================================================
-        # LIST
-        # ====================================================
-
-        if not words:
-
-            embed = discord.Embed(
-                title="🤬 HSL-CORP GALI FILTER",
-                description=(
-                    "Abhi koi custom gali word add nahi hai.\n\n"
-                    "Add karne ke liye:\n"
-                    "`/addgali word`"
-                ),
-                color=discord.Color.orange()
-            )
-
-            return await ctx.send(
-                embed=embed
-            )
-
-        lines = []
-
-        for index, word in enumerate(
-            words,
-            start=1
-        ):
-
-            lines.append(
-                f"**{index}.** `{word}`"
-            )
-
-        embed = discord.Embed(
-            title="🤬 HSL-CORP GALI FILTER",
-            description="\n".join(lines),
-            color=discord.Color.red()
-        )
-
-        embed.add_field(
-            name="Commands",
-            value=(
-                "`/addgali word`\n"
-                "`/removegali word`\n"
-                "`/gali clear`"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Status",
-            value=(
-                "🟢 **Enabled**"
-                if settings.get(
-                    "gali_enabled",
-                    True
-                )
-                else
-                "🔴 **Disabled**"
-            ),
-            inline=False
-        )
-
-        embed.set_footer(
-            text="HSL-CORP • Gali Protection"
-        )
-
-        await ctx.send(
-            embed=embed
         )
 
 
@@ -1142,8 +1053,8 @@ class Security(commands.Cog):
                 f"║ ♻️ Duplicate      "
                 f"{'🟢 ON' if settings['duplicate'] else '🔴 OFF'} ║\n"
 
-                f"║ 🤬 Gali Filter    "
-                f"{'🟢 ON' if settings['gali_enabled'] else '🔴 OFF'} ║\n"
+                f"║ 🤬 Anti-Gali      "
+                f"{'🟢 ON' if settings['antigali'] else '🔴 OFF'} ║\n"
 
                 "╚══════════════════════════╝\n"
 
@@ -1152,19 +1063,6 @@ class Security(commands.Cog):
             ),
 
             color=discord.Color.dark_green()
-        )
-
-        embed.add_field(
-            name="🤬 Custom Gali Words",
-            value=str(
-                len(
-                    settings.get(
-                        "gali_words",
-                        []
-                    )
-                )
-            ),
-            inline=True
         )
 
         embed.set_footer(
@@ -1191,8 +1089,13 @@ class Security(commands.Cog):
         amount: int
     ):
 
-        if not await self.is_owner(ctx.author):
-            return await self.owner_only_message(ctx)
+        if not await self.is_owner(
+            ctx.author
+        ):
+
+            return await self.owner_only_message(
+                ctx
+            )
 
         if amount < 1 or amount > 100:
 
@@ -1212,9 +1115,16 @@ class Security(commands.Cog):
                 limit=limit
             )
 
-            count = len(deleted)
+            count = len(
+                deleted
+            )
 
-            if ctx.message and ctx.message in deleted:
+            if (
+                ctx.message
+                and
+                ctx.message in deleted
+            ):
+
                 count -= 1
 
             count = max(
@@ -1264,8 +1174,13 @@ class Security(commands.Cog):
         text: str
     ):
 
-        if not await self.is_owner(ctx.author):
-            return await self.owner_only_message(ctx)
+        if not await self.is_owner(
+            ctx.author
+        ):
+
+            return await self.owner_only_message(
+                ctx
+            )
 
         if not text or not text.strip():
 
@@ -1312,6 +1227,250 @@ class Security(commands.Cog):
 
 
     # ========================================================
+    # ADD GALI
+    # ========================================================
+
+    @commands.hybrid_command(
+        name="addgali",
+        description="Add a word to Anti-Gali filter"
+    )
+    @commands.guild_only()
+    async def addgali(
+        self,
+        ctx,
+        *,
+        word: str
+    ):
+
+        # IMPORTANT:
+        # Server Owner / Bot Owner / Owner Role
+
+        if not await self.is_owner(
+            ctx.author
+        ):
+
+            return await self.owner_only_message(
+                ctx
+            )
+
+        word = (
+            word
+            .strip()
+            .lower()
+        )
+
+        if not word:
+
+            return await ctx.send(
+                "❌ Gali word empty nahi ho sakta.",
+                delete_after=5
+            )
+
+        # Remove excessive spaces
+
+        word = re.sub(
+            r"\s+",
+            " ",
+            word
+        )
+
+        guild_id = str(
+            ctx.guild.id
+        )
+
+        if guild_id not in self.gali_data:
+
+            self.gali_data[guild_id] = []
+
+        words = self.gali_data[guild_id]
+
+        if not isinstance(
+            words,
+            list
+        ):
+
+            words = []
+
+        # Normalize
+
+        words = [
+            str(x).strip().lower()
+            for x in words
+            if str(x).strip()
+        ]
+
+        words = list(
+            dict.fromkeys(
+                words
+            )
+        )
+
+        # Already exists
+
+        if word in words:
+
+            return await ctx.send(
+                f"🟡 `{word}` **already Anti-Gali list mein hai.**",
+                delete_after=5
+            )
+
+        words.append(
+            word
+        )
+
+        self.gali_data[guild_id] = words
+
+        save_gali_data(
+            self.gali_data
+        )
+
+        await ctx.send(
+            f"🔴 **ANTI-GALI**\n"
+            f"`{word}` successfully add kar diya.\n"
+            f"Total blocked words: **{len(words)}**",
+            delete_after=7
+        )
+
+
+    # ========================================================
+    # REMOVE GALI
+    # ========================================================
+
+    @commands.hybrid_command(
+        name="removegali",
+        description="Remove a word from Anti-Gali filter"
+    )
+    @commands.guild_only()
+    async def removegali(
+        self,
+        ctx,
+        *,
+        word: str
+    ):
+
+        if not await self.is_owner(
+            ctx.author
+        ):
+
+            return await self.owner_only_message(
+                ctx
+            )
+
+        word = (
+            word
+            .strip()
+            .lower()
+        )
+
+        guild_id = str(
+            ctx.guild.id
+        )
+
+        words = self.get_gali_words(
+            guild_id
+        )
+
+        if word not in words:
+
+            return await ctx.send(
+                f"🟡 `{word}` **Anti-Gali list mein nahi hai.**",
+                delete_after=5
+            )
+
+        words.remove(
+            word
+        )
+
+        self.gali_data[guild_id] = words
+
+        save_gali_data(
+            self.gali_data
+        )
+
+        await ctx.send(
+            f"🟢 **ANTI-GALI**\n"
+            f"`{word}` list se remove kar diya.",
+            delete_after=6
+        )
+
+
+    # ========================================================
+    # GALI LIST
+    # ========================================================
+
+    @commands.hybrid_command(
+        name="galilist",
+        description="Show Anti-Gali blocked words"
+    )
+    @commands.guild_only()
+    async def galilist(
+        self,
+        ctx
+    ):
+
+        if not await self.is_owner(
+            ctx.author
+        ):
+
+            return await self.owner_only_message(
+                ctx
+            )
+
+        words = self.get_gali_words(
+            ctx.guild.id
+        )
+
+        if not words:
+
+            return await ctx.send(
+                "🟢 **Anti-Gali list empty hai.**\n"
+                "Use `/addgali word:` to add a word.",
+                delete_after=7
+            )
+
+        # Discord embed limit protection
+
+        display_words = words[:100]
+
+        description = "\n".join(
+            f"`{index}.` `{word}`"
+            for index, word
+            in enumerate(
+                display_words,
+                start=1
+            )
+        )
+
+        embed = discord.Embed(
+            title="🤬 HSL-CORP ANTI-GALI",
+            description=description,
+            color=discord.Color.red()
+        )
+
+        embed.add_field(
+            name="Blocked Words",
+            value=str(
+                len(words)
+            ),
+            inline=True
+        )
+
+        embed.add_field(
+            name="Status",
+            value="🟢 ENABLED",
+            inline=True
+        )
+
+        embed.set_footer(
+            text="HSL-CORP • Anti-Gali System"
+        )
+
+        await ctx.send(
+            embed=embed
+        )
+
+
+    # ========================================================
     # WHITELIST BOT
     # ========================================================
 
@@ -1327,8 +1486,13 @@ class Security(commands.Cog):
         action: str = "add"
     ):
 
-        if not await self.is_owner(ctx.author):
-            return await self.owner_only_message(ctx)
+        if not await self.is_owner(
+            ctx.author
+        ):
+
+            return await self.owner_only_message(
+                ctx
+            )
 
         if not member.bot:
 
@@ -1350,11 +1514,23 @@ class Security(commands.Cog):
             []
         )
 
+        normalized = []
+
+        for bot_id in bots:
+
+            try:
+                normalized.append(
+                    int(bot_id)
+                )
+            except (
+                TypeError,
+                ValueError
+            ):
+                pass
+
         bots = list(
             dict.fromkeys(
-                int(x)
-                for x in bots
-                if str(x).isdigit()
+                normalized
             )
         )
 
@@ -1426,6 +1602,7 @@ class Security(commands.Cog):
 
         return await ctx.send(
             "❌ Invalid action.\n\n"
+            "**Use:**\n"
             "`!whitelistbot @Bot`\n"
             "`!whitelistbot @Bot remove`",
             delete_after=7
@@ -1446,8 +1623,13 @@ class Security(commands.Cog):
         ctx
     ):
 
-        if not await self.is_owner(ctx.author):
-            return await self.owner_only_message(ctx)
+        if not await self.is_owner(
+            ctx.author
+        ):
+
+            return await self.owner_only_message(
+                ctx
+            )
 
         settings = self.get_settings(
             ctx.guild.id
@@ -1523,8 +1705,13 @@ class Security(commands.Cog):
         action: str = "toggle"
     ):
 
-        if not await self.is_owner(ctx.author):
-            return await self.owner_only_message(ctx)
+        if not await self.is_owner(
+            ctx.author
+        ):
+
+            return await self.owner_only_message(
+                ctx
+            )
 
         settings = self.get_settings(
             ctx.guild.id
@@ -1535,15 +1722,30 @@ class Security(commands.Cog):
             []
         )
 
-        users = list(
+        normalized_users = []
+
+        for user_id in users:
+
+            try:
+
+                normalized_users.append(
+                    int(user_id)
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                pass
+
+        settings["whitelist_music"] = list(
             dict.fromkeys(
-                int(x)
-                for x in users
-                if str(x).isdigit()
+                normalized_users
             )
         )
 
-        settings["whitelist_music"] = users
+        users = settings["whitelist_music"]
 
         if member is None:
 
@@ -1609,6 +1811,26 @@ class Security(commands.Cog):
             action
         ).lower().strip()
 
+        if action not in (
+            "add",
+            "remove",
+            "delete",
+            "del",
+            "off",
+            "disable",
+            "on",
+            "enable",
+            "toggle"
+        ):
+
+            return await ctx.send(
+                "❌ Invalid action.\n\n"
+                "`/whitelist @User`\n"
+                "`/whitelist @User add`\n"
+                "`/whitelist @User remove`",
+                delete_after=8
+            )
+
         if action in (
             "remove",
             "delete",
@@ -1667,25 +1889,9 @@ class Security(commands.Cog):
                 delete_after=8
             )
 
-        if action == "toggle":
+        if member.id in users:
 
-            if member.id in users:
-
-                users.remove(
-                    member.id
-                )
-
-                save_data(
-                    self.data
-                )
-
-                return await ctx.send(
-                    f"🟡 {member.mention} "
-                    "**music whitelist se remove ho gaya.**",
-                    delete_after=6
-                )
-
-            users.append(
+            users.remove(
                 member.id
             )
 
@@ -1694,16 +1900,22 @@ class Security(commands.Cog):
             )
 
             return await ctx.send(
-                f"🟢 {member.mention} "
-                "**music whitelist mein add ho gaya.**",
-                delete_after=8
+                f"🟡 {member.mention} "
+                "**music whitelist se remove ho gaya.**",
+                delete_after=6
             )
 
-        return await ctx.send(
-            "❌ Invalid action.\n\n"
-            "`/whitelist @User`\n"
-            "`/whitelist @User add`\n"
-            "`/whitelist @User remove`",
+        users.append(
+            member.id
+        )
+
+        save_data(
+            self.data
+        )
+
+        await ctx.send(
+            f"🟢 {member.mention} "
+            "**music whitelist mein add ho gaya.**",
             delete_after=8
         )
 
@@ -1723,8 +1935,13 @@ class Security(commands.Cog):
         role: discord.Role
     ):
 
-        if not await self.is_owner(ctx.author):
-            return await self.owner_only_message(ctx)
+        if not await self.is_owner(
+            ctx.author
+        ):
+
+            return await self.owner_only_message(
+                ctx
+            )
 
         if role.is_default():
 
@@ -1802,8 +2019,13 @@ class Security(commands.Cog):
         role: discord.Role
     ):
 
-        if not await self.is_owner(ctx.author):
-            return await self.owner_only_message(ctx)
+        if not await self.is_owner(
+            ctx.author
+        ):
+
+            return await self.owner_only_message(
+                ctx
+            )
 
         if role.is_default():
 
@@ -1962,7 +2184,10 @@ class Security(commands.Cog):
                         entry.created_at
                     ).total_seconds()
 
-                    if age < 0 or age > 30:
+                    if age < 0:
+                        continue
+
+                    if age > 30:
                         continue
 
                     inviter = entry.user
@@ -1996,11 +2221,17 @@ class Security(commands.Cog):
 
         if inviter is None:
 
+            print(
+                "[SECURITY] ⚠️ Inviter not found."
+            )
+
             await self.kick_unauthorized_bot(
                 member
             )
 
             return
+
+        # Server owner bypass
 
         if inviter.id == guild.owner_id:
 
@@ -2013,29 +2244,24 @@ class Security(commands.Cog):
 
         inviter_member = None
 
-        if isinstance(
-            inviter,
-            discord.Member
-        ):
+        try:
 
-            inviter_member = inviter
+            inviter_member = guild.get_member(
+                inviter.id
+            )
 
-        else:
+            if inviter_member is None:
 
-            try:
-
-                inviter_member = guild.get_member(
+                inviter_member = await guild.fetch_member(
                     inviter.id
                 )
 
-                if inviter_member is None:
+        except Exception as e:
 
-                    inviter_member = await guild.fetch_member(
-                        inviter.id
-                    )
-
-            except Exception:
-                pass
+            print(
+                "[SECURITY] Inviter fetch error:",
+                repr(e)
+            )
 
         await self.kick_unauthorized_bot(
             member
@@ -2053,27 +2279,39 @@ class Security(commands.Cog):
 
 
     # ========================================================
-    # KICK BOT
+    # KICK UNAUTHORIZED BOT
     # ========================================================
 
     async def kick_unauthorized_bot(
         self,
-        member
+        member: discord.Member
     ):
 
         guild = member.guild
+
         me = guild.me
 
         if me is None:
             return False
 
         if not me.guild_permissions.kick_members:
+
+            print(
+                "[SECURITY] ❌ HSL-CORP lacks Kick Members."
+            )
+
             return False
 
         if self.bot.user and member.id == self.bot.user.id:
+
             return False
 
         if member.top_role >= me.top_role:
+
+            print(
+                "[SECURITY] ❌ KICK BLOCKED BY ROLE HIERARCHY."
+            )
+
             return False
 
         try:
@@ -2094,11 +2332,11 @@ class Security(commands.Cog):
         except Exception as e:
 
             print(
-                "[SECURITY] KICK ERROR:",
+                "[SECURITY] ❌ Kick error:",
                 repr(e)
             )
 
-            return False
+        return False
 
 
     # ========================================================
@@ -2107,7 +2345,7 @@ class Security(commands.Cog):
 
     async def remove_inviter_roles(
         self,
-        member
+        member: discord.Member
     ):
 
         if not member:
@@ -2124,6 +2362,11 @@ class Security(commands.Cog):
             return
 
         if not me.guild_permissions.manage_roles:
+
+            print(
+                "[SECURITY] ❌ HSL-CORP lacks Manage Roles."
+            )
+
             return
 
         removable_roles = []
@@ -2187,15 +2430,36 @@ class Security(commands.Cog):
         )
 
         try:
-            user_id = int(user_id)
-        except Exception:
+
+            user_id = int(
+                user_id
+            )
+
+        except (
+            TypeError,
+            ValueError
+        ):
+
             return False
 
-        return any(
-            int(x) == user_id
-            for x in whitelist
-            if str(x).isdigit()
-        )
+        for allowed_id in whitelist:
+
+            try:
+
+                if int(
+                    allowed_id
+                ) == user_id:
+
+                    return True
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                continue
+
+        return False
 
 
     # ========================================================
@@ -2228,6 +2492,41 @@ class Security(commands.Cog):
 
 
     # ========================================================
+    # GALI OWNER BYPASS
+    # ========================================================
+
+    async def gali_bypass(
+        self,
+        member
+    ):
+
+        if member.id == member.guild.owner_id:
+            return True
+
+        if member.id in BOT_OWNER_IDS:
+            return True
+
+        if self.has_owner_role(
+            member
+        ):
+
+            return True
+
+        try:
+
+            if await self.bot.is_owner(
+                member
+            ):
+
+                return True
+
+        except Exception:
+            pass
+
+        return False
+
+
+    # ========================================================
     # MESSAGE SECURITY
     # ========================================================
 
@@ -2237,8 +2536,12 @@ class Security(commands.Cog):
         message: discord.Message
     ):
 
+        # Ignore bots
+
         if message.author.bot:
             return
+
+        # Ignore DMs
 
         if not message.guild:
             return
@@ -2254,128 +2557,110 @@ class Security(commands.Cog):
 
         lower_content = content.lower()
 
-        # ====================================================
-        # OWNER BYPASS
-        # ====================================================
-
-        owner_bypass = False
-
-        if message.author.id == message.guild.owner_id:
-            owner_bypass = True
-
-        elif message.author.id in BOT_OWNER_IDS:
-            owner_bypass = True
-
-        elif self.has_owner_role(message.author):
-            owner_bypass = True
-
-        else:
-
-            try:
-
-                if await self.bot.is_owner(
-                    message.author
-                ):
-                    owner_bypass = True
-
-            except Exception:
-                pass
 
         # ====================================================
-        # GALI FILTER
+        # ANTI-GALI
         # ====================================================
 
-        if (
-            settings.get(
-                "gali_enabled",
-                True
-            )
-            and not owner_bypass
+        if settings.get(
+            "antigali",
+            True
         ):
 
-            gali_words = settings.get(
-                "gali_words",
-                []
-            )
+            # Owner bypass
 
-            detected_gali = self.contains_gali(
-                content,
-                gali_words
-            )
+            if not await self.gali_bypass(
+                message.author
+            ):
 
-            if detected_gali:
-
-                print(
-                    f"[SECURITY] 🤬 GALI DETECTED | "
-                    f"User: {message.author} | "
-                    f"Word: {detected_gali}"
+                detected_gali = self.find_gali(
+                    message.guild.id,
+                    content
                 )
 
-                try:
-
-                    await message.delete()
-
-                except discord.Forbidden:
+                if detected_gali:
 
                     print(
-                        "[SECURITY] ❌ Cannot delete gali message."
+                        "[SECURITY] 🚨 GALI DETECTED"
                     )
-
-                except Exception as e:
 
                     print(
-                        "[SECURITY] GALI DELETE ERROR:",
-                        repr(e)
+                        f"[SECURITY] User: "
+                        f"{message.author} "
+                        f"({message.author.id})"
                     )
 
-                # TIMEOUT
+                    print(
+                        f"[SECURITY] Word: "
+                        f"{detected_gali}"
+                    )
 
-                try:
+                    # Delete message
 
-                    await message.author.timeout(
-                        timedelta(
-                            minutes=10
-                        ),
-                        reason=(
-                            "HSL-CORP Gali Filter - "
-                            "Inappropriate language"
+                    try:
+
+                        await message.delete()
+
+                    except discord.Forbidden:
+
+                        print(
+                            "[GALI] ❌ Cannot delete message."
                         )
-                    )
 
-                except discord.Forbidden:
+                    except Exception as e:
 
-                    print(
-                        "[SECURITY] ❌ Cannot timeout gali user."
-                    )
+                        print(
+                            "[GALI] DELETE ERROR:",
+                            repr(e)
+                        )
 
-                except Exception as e:
+                    # Timeout 10 minutes
 
-                    print(
-                        "[SECURITY] GALI TIMEOUT ERROR:",
-                        repr(e)
-                    )
+                    try:
 
-                # WARNING
+                        await message.author.timeout(
+                            timedelta(
+                                minutes=10
+                            ),
+                            reason=(
+                                "HSL-CORP Anti-Gali - "
+                                "Blocked word"
+                            )
+                        )
 
-                try:
+                    except discord.Forbidden:
 
-                    warning = await message.channel.send(
+                        print(
+                            "[GALI] ❌ Cannot timeout user."
+                        )
 
-                        f"🤬 {message.author.mention} "
-                        "**inappropriate language detected — "
-                        "10 minute timeout.**"
-                    )
+                    except Exception as e:
 
-                    await asyncio.sleep(
-                        3
-                    )
+                        print(
+                            "[GALI] TIMEOUT ERROR:",
+                            repr(e)
+                        )
 
-                    await warning.delete()
+                    # Warning
 
-                except Exception:
-                    pass
+                    try:
 
-                return
+                        warning = await message.channel.send(
+                            f"🤬 {message.author.mention} "
+                            "**gali detected — 10 minute timeout.**"
+                        )
+
+                        await asyncio.sleep(
+                            3
+                        )
+
+                        await warning.delete()
+
+                    except Exception:
+                        pass
+
+                    return
+
 
         # ====================================================
         # DUPLICATE
@@ -2398,7 +2683,9 @@ class Security(commands.Cog):
             if old == message.content:
 
                 try:
+
                     await message.delete()
+
                 except Exception:
                     pass
 
@@ -2431,6 +2718,7 @@ class Security(commands.Cog):
                 )
             )
 
+
         # ====================================================
         # ANTI-LINK
         # ====================================================
@@ -2455,12 +2743,44 @@ class Security(commands.Cog):
 
             if is_link:
 
-                if owner_bypass:
+                # Server owner bypass
+
+                if message.author.id == message.guild.owner_id:
                     return
+
+                # Bot owner bypass
+
+                if message.author.id in BOT_OWNER_IDS:
+                    return
+
+                # Owner role bypass
+
+                if self.has_owner_role(
+                    message.author
+                ):
+
+                    return
+
+                # discord.py owner
+
+                try:
+
+                    if await self.bot.is_owner(
+                        message.author
+                    ):
+
+                        return
+
+                except Exception:
+                    pass
+
+                # Music command
 
                 is_music = self.is_music_command(
                     content
                 )
+
+                # Music whitelist
 
                 if is_music:
 
@@ -2472,6 +2792,8 @@ class Security(commands.Cog):
                     if allowed:
                         return
 
+                # Delete link
+
                 try:
 
                     await message.delete()
@@ -2482,6 +2804,8 @@ class Security(commands.Cog):
                         "[SECURITY] LINK DELETE ERROR:",
                         repr(e)
                     )
+
+                # Timeout
 
                 try:
 
@@ -2498,14 +2822,15 @@ class Security(commands.Cog):
                 except Exception as e:
 
                     print(
-                        "[SECURITY] LINK TIMEOUT ERROR:",
+                        "[SECURITY] TIMEOUT ERROR:",
                         repr(e)
                     )
+
+                # Warning
 
                 try:
 
                     warning = await message.channel.send(
-
                         f"🔗 {message.author.mention} "
                         "**link detected — 10 minute timeout.**"
                     )
@@ -2561,6 +2886,7 @@ class Security(commands.Cog):
             error,
             commands.CommandNotFound
         ):
+
             return
 
         if isinstance(
@@ -2607,6 +2933,23 @@ class Security(commands.Cog):
 
                 await ctx.send(
                     "❌ **Role nahi mila.**",
+                    delete_after=5
+                )
+
+            except Exception:
+                pass
+
+            return
+
+        if isinstance(
+            error,
+            commands.BadArgument
+        ):
+
+            try:
+
+                await ctx.send(
+                    "❌ **Invalid argument.**",
                     delete_after=5
                 )
 
@@ -2676,7 +3019,7 @@ class Security(commands.Cog):
         )
 
         print(
-            "🤬 Gali Filter"
+            "🤬 Anti-Gali"
         )
 
         print(
@@ -2701,6 +3044,11 @@ class Security(commands.Cog):
 
         print(
             "🎭 Remove Role"
+        )
+
+        print(
+            f"🤬 Gali Words: "
+            f"{sum(len(v) for v in self.gali_data.values() if isinstance(v, list))}"
         )
 
         print(
