@@ -12,7 +12,7 @@ from discord.ext import commands
 import yt_dlp
 
 # =========================================================
-# HSL-CORP ULTRA FIXED MUSIC SYSTEM
+# HSL-CORP FAST & FIX MUSIC SYSTEM
 # =========================================================
 
 def load_opus():
@@ -222,26 +222,23 @@ class MusicPlayer(commands.Cog):
         except Exception:
             pass
 
-    def get_ytdlp_options(self):
+    def get_ytdlp_options(self, fast=False):
         opts = {
             "format": "bestaudio/best",
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            "extract_flat": False,
             "skip_download": True,
-            "socket_timeout": 10,
-            "source_address": "0.0.0.0",
+            "socket_timeout": 5,
             "nocheckcertificate": True,
             "geo_bypass": True,
+            "default_search": "ytsearch",
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["android", "web"],
+                    "player_client": ["mweb", "android"],
+                    "skip": ["dash", "hls"]
                 }
-            },
-            "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            },
+            }
         }
         if COOKIE_FILE and os.path.isfile(COOKIE_FILE):
             opts["cookiefile"] = COOKIE_FILE
@@ -298,8 +295,7 @@ class MusicPlayer(commands.Cog):
         queries = [
             f"{self.current.title} song", 
             "Trending Bollywood Songs", 
-            "Arijit Singh Latest Songs", 
-            "Hindi Pop Romantic Mix"
+            "Arijit Singh Latest Songs"
         ]
         query = random.choice(queries)
 
@@ -433,7 +429,7 @@ class MusicPlayer(commands.Cog):
         song = await self.resolve_song(query, ctx.author)
         
         if not song:
-            return await msg.edit(content="❌ **Song Nahi Mila!** Please try pasting full YouTube URL or check search query.")
+            return await msg.edit(content="❌ **Song Nahi Mila!** Please check search query or paste YouTube link.")
 
         await msg.delete()
         self.queue.append(song)
