@@ -1,9 +1,9 @@
-discord.py[voice]>=2.7.1
 python-dotenv
-PyNaCl>=1.5.0
-yt-dlp[default]
-aiohttp>=3.9.0
 davey
 ffmpeg-python
 Flask>=2.3.2
 waitress>=2.1.2
+yt-dlp[default]
+discord.py
+PyNaCl
+aiohttp
