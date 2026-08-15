@@ -1509,3 +1509,6 @@ if __name__ == "__main__":
         bot.run(TOKEN)
     else:
         print("[MUSIC] [ERROR] DISCORD_TOKEN environment variable not set.")
+        
+async def setup(bot):
+    await bot.add_cog(MusicPlayer(bot))
