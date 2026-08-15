@@ -19,7 +19,7 @@ import yt_dlp
 
 
 # =========================================================
-# OPUS
+# OPUS LOADING
 # =========================================================
 
 def load_opus():
@@ -48,10 +48,7 @@ def load_opus():
                 return True
 
         except Exception as e:
-            print(
-                f"[MUSIC] [WARN] Failed to load Opus "
-                f"{path}: {e}"
-            )
+            print(f"[MUSIC] [WARN] Failed to load Opus {path}: {e}")
 
     print("[MUSIC] [ERROR] Opus codec NOT loaded.")
     return False
@@ -60,103 +57,51 @@ def load_opus():
 OPUS_LOADED = load_opus()
 
 if not OPUS_LOADED:
-    print(
-        "[MUSIC] [WARN] Discord voice audio cannot play "
-        "until Opus is available."
-    )
+    print("[MUSIC] [WARN] Discord voice audio cannot play until Opus is available.")
 
 
 # =========================================================
-# BASE DIRECTORY
+# BASE DIRECTORY & COOKIES
 # =========================================================
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))
 ) if __file__ else os.getcwd()
 
-
-# =========================================================
-# YOUTUBE COOKIES
-# =========================================================
-
-COOKIE_PATH = os.path.join(
-    BASE_DIR,
-    "cookies.txt"
-)
-
-YOUTUBE_COOKIES = os.getenv(
-    "YOUTUBE_COOKIES"
-)
-
+COOKIE_PATH = os.path.join(BASE_DIR, "cookies.txt")
+YOUTUBE_COOKIES = os.getenv("YOUTUBE_COOKIES")
 COOKIE_FILE = None
-
 
 if os.path.isfile(COOKIE_PATH):
     COOKIE_FILE = COOKIE_PATH
-    print(
-        f"[MUSIC] [COOKIE] Local cookies found: "
-        f"{COOKIE_FILE}"
-    )
+    print(f"[MUSIC] [COOKIE] Local cookies found: {COOKIE_FILE}")
 
 elif YOUTUBE_COOKIES:
     try:
-        cookie_dir = (
-            "/tmp"
-            if os.name != "nt"
-            else BASE_DIR
-        )
+        cookie_dir = "/tmp" if os.name != "nt" else BASE_DIR
+        COOKIE_FILE = os.path.join(cookie_dir, "youtube_cookies.txt")
 
-        COOKIE_FILE = os.path.join(
-            cookie_dir,
-            "youtube_cookies.txt"
-        )
-
-        with open(
-            COOKIE_FILE,
-            "w",
-            encoding="utf-8"
-        ) as f:
+        with open(COOKIE_FILE, "w", encoding="utf-8") as f:
             f.write(YOUTUBE_COOKIES)
 
-        print(
-            "[MUSIC] [COOKIE] Cookies loaded "
-            "from environment."
-        )
+        print("[MUSIC] [COOKIE] Cookies loaded from environment.")
 
     except Exception as e:
-        print(
-            f"[MUSIC] [ERROR] Cookie file error: "
-            f"{e!r}"
-        )
+        print(f"[MUSIC] [ERROR] Cookie file error: {e!r}")
 
 else:
-    print(
-        "[MUSIC] [WARN] YouTube cookies not found."
-    )
+    print("[MUSIC] [WARN] YouTube cookies not found.")
 
 
 # =========================================================
-# HSL GIF
-# =========================================================
-
-HSL_GIF = (
-    "https://media3.giphy.com/media/"
-    "v1.Y2lkPTc5MGI3NjExZ3RqemR3c3A0MHl3NWw1NHE4a2FjdWVkdDdqdXppaXdxdHhobGF5ayZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/"
-    "iBILBPeCHDVuELjOND/giphy.gif"
-)
-
-
-# =========================================================
-# FFMPEG
+# FFMPEG RESOLVER
 # =========================================================
 
 def find_ffmpeg():
     ffmpeg = shutil.which("ffmpeg")
 
     if ffmpeg:
-        print(
-            f"[MUSIC] [OK] FFmpeg found: {ffmpeg}"
-        )
+        print(f"[MUSIC] [OK] FFmpeg found: {ffmpeg}")
         return ffmpeg
 
     paths = [
@@ -167,15 +112,10 @@ def find_ffmpeg():
 
     for path in paths:
         if os.path.isfile(path):
-            print(
-                f"[MUSIC] [OK] FFmpeg found: {path}"
-            )
+            print(f"[MUSIC] [OK] FFmpeg found: {path}")
             return path
 
-    print(
-        "[MUSIC] [WARN] FFmpeg not found. "
-        "Using 'ffmpeg' command."
-    )
+    print("[MUSIC] [WARN] FFmpeg not found. Using 'ffmpeg' command.")
     return "ffmpeg"
 
 
@@ -183,7 +123,7 @@ FFMPEG_PATH = find_ffmpeg()
 
 
 # =========================================================
-# YT-DLP BASE OPTIONS
+# YT-DLP BASE CONFIGURATION
 # =========================================================
 
 YTDLP_OPTIONS = {
@@ -207,17 +147,11 @@ YTDLP_OPTIONS = {
 
 
 # =========================================================
-# SONG
+# SONG OBJECT
 # =========================================================
 
 class Song:
-    def __init__(
-        self,
-        title,
-        url,
-        thumbnail,
-        requester
-    ):
+    def __init__(self, title, url, thumbnail, requester):
         self.title = title
         self.url = url
         self.thumbnail = thumbnail
@@ -225,11 +159,10 @@ class Song:
 
 
 # =========================================================
-# MUSIC PLAYER
+# MUSIC PLAYER ENGINE
 # =========================================================
 
 class MusicPlayer:
-
     def __init__(self, bot):
         self.bot = bot
         self.voice = None
@@ -243,12 +176,8 @@ class MusicPlayer:
         self.play_token = 0
         self.play_lock = asyncio.Lock()
         self.skip_lock = asyncio.Lock()
-        self.now_playing_message = None
-        self.last_play_request = None
-        self.last_play_request_time = 0.0
         self.autoplay_history = deque(maxlen=30)
         self.play_history = deque(maxlen=30)
-        self.last_manual_query = None
         self.stopping = False
 
     def invalidate_playback(self):
@@ -274,11 +203,7 @@ class MusicPlayer:
                     headers=headers,
                     json={"status": str(text)[:500]}
                 ) as response:
-                    if response.status in (200, 204):
-                        print(f"[MUSIC] [OK] VC status updated: {text}")
-                    else:
-                        error = await response.text()
-                        print(f"[MUSIC] [WARN] VC status failed ({response.status}): {error}")
+                    pass
         except Exception as e:
             print(f"[MUSIC] [WARN] VC status error: {e!r}")
 
@@ -300,8 +225,7 @@ class MusicPlayer:
                     headers=headers,
                     json={"status": ""}
                 ) as response:
-                    if response.status in (200, 204):
-                        print("[MUSIC] [OK] VC status cleared.")
+                    pass
         except Exception as e:
             print(f"[MUSIC] [WARN] VC status clear error: {e!r}")
 
@@ -324,10 +248,8 @@ class MusicPlayer:
 
             if query.startswith(("http://", "https://")):
                 target = query
-                print("[MUSIC] [URL] Direct URL:", target)
             else:
                 target = f"ytsearch1:{query}"
-                print("[MUSIC] [SEARCH] Searching:", query)
 
             try:
                 options = self.get_ytdlp_options(use_cookies=bool(COOKIE_FILE))
@@ -373,7 +295,6 @@ class MusicPlayer:
         if not data:
             return None
 
-        print("[MUSIC] [OK] Selected:", data["title"])
         return Song(data["title"], data["url"], data["thumbnail"], requester)
 
     async def get_audio_stream(self, song):
@@ -400,12 +321,7 @@ class MusicPlayer:
                         return None
                     info = entries[0]
 
-                stream_url = info.get("url")
-                if stream_url:
-                    print("[MUSIC] [OK] Fresh audio stream obtained.")
-                    return stream_url
-
-                return None
+                return info.get("url")
 
             except Exception as e:
                 print("[MUSIC] [ERROR] Audio stream extraction failed:", repr(e))
@@ -502,7 +418,6 @@ class MusicPlayer:
         if not data:
             return None
 
-        print("[MUSIC] [AUTOPLAY] Selected:", data["title"])
         song = Song(data["title"], data["url"], data.get("thumbnail"), requester)
         self.autoplay_history.append(song.url)
         self.play_history.append(song.url)
@@ -531,10 +446,8 @@ class MusicPlayer:
                         self.current = song
                         self.play_history.append(song.url)
                     elif self.autoplay and self.current:
-                        print("[MUSIC] [AUTOPLAY] Searching...")
                         song = await self.resolve_autoplay_song()
                         if not song:
-                            print("[MUSIC] [WARN] Autoplay found no song.")
                             self.current = None
                             await self.clear_voice_status()
                             return
@@ -547,8 +460,6 @@ class MusicPlayer:
                     self.play_token += 1
                     token = self.play_token
 
-                    print(f"[MUSIC] [PREPARE]: {song.title} | token: {token}")
-
                     if self.voice.is_playing() or self.voice.is_paused():
                         self.voice.stop()
                         await asyncio.sleep(0.1)
@@ -556,11 +467,9 @@ class MusicPlayer:
                     stream_url = await self.get_audio_stream(song)
 
                     if token != self.play_token:
-                        print("[MUSIC] [WARN] Playback cancelled before FFmpeg start.")
                         return
 
                     if not stream_url:
-                        print(f"[MUSIC] [ERROR] Stream unavailable: {song.title}")
                         if self.queue or self.autoplay:
                             self.current = None
                             continue
@@ -568,7 +477,6 @@ class MusicPlayer:
                         await self.clear_voice_status()
                         return
 
-                    # Optimized FFmpeg reconnect options to prevent skipping mid-song
                     before_options = (
                         "-reconnect 1 "
                         "-reconnect_streamed 1 "
@@ -600,7 +508,6 @@ class MusicPlayer:
                             if error:
                                 print(f"[MUSIC] [ERROR] Playback callback error: {repr(error)}")
 
-                            # Schedule play_next safely without blocking loop thread
                             if token == self.play_token and not self.stopping:
                                 asyncio.run_coroutine_threadsafe(
                                     self._on_song_end(), self.bot.loop
@@ -608,7 +515,6 @@ class MusicPlayer:
 
                         self.voice.play(source, after=after_play)
                         await self.update_voice_status(f"🎶 {song.title}")
-                        print(f"[MUSIC] [PLAYING]: {song.title}")
                         break
 
                     except Exception as e:
@@ -622,3 +528,64 @@ class MusicPlayer:
     async def _on_song_end(self):
         await asyncio.sleep(0.5)
         await self.play_next()
+
+
+# =========================================================
+# DISCORD COG & ENTRY POINT
+# =========================================================
+
+class Music(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.player = MusicPlayer(bot)
+
+    @commands.command(name="play", aliases=["p"])
+    async def play(self, ctx, *, query: str):
+        """Play a song or add it to queue"""
+        if not ctx.author.voice:
+            return await ctx.send("❌ You must be in a voice channel to play music!")
+
+        if not ctx.voice_client:
+            self.player.voice = await ctx.author.voice.channel.connect()
+        else:
+            self.player.voice = ctx.voice_client
+
+        self.player.text_channel = ctx.channel
+
+        song = await self.player.resolve_song(query, ctx.author)
+        if not song:
+            return await ctx.send("❌ Could not resolve the requested song.")
+
+        if self.player.voice.is_playing() or self.player.voice.is_paused():
+            self.player.queue.append(song)
+            await ctx.send(f"🎵 Added to queue: **{song.title}**")
+        else:
+            self.player.current = song
+            self.player.play_history.append(song.url)
+            await ctx.send(f"🎶 Now playing: **{song.title}**")
+            await self.player.play_next()
+
+    @commands.command(name="stop")
+    async def stop(self, ctx):
+        """Stop music and disconnect"""
+        if ctx.voice_client:
+            self.player.stopping = True
+            self.player.queue.clear()
+            self.player.current = None
+            await ctx.voice_client.disconnect()
+            await self.player.clear_voice_status()
+            await ctx.send("⏹️ Stopped playback and disconnected.")
+            self.player.stopping = False
+
+    @commands.command(name="skip", aliases=["s"])
+    async def skip(self, ctx):
+        """Skip currently playing track"""
+        if ctx.voice_client and ctx.voice_client.is_playing():
+            ctx.voice_client.stop()
+            await ctx.send("⏭️ Skipped current song.")
+        else:
+            await ctx.send("❌ Nothing is playing right now.")
+
+
+async def setup(bot):
+    await bot.add_cog(Music(bot))
