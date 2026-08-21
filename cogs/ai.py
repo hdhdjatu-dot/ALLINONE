@@ -2,11 +2,12 @@
 
 import discord
 from discord.ext import commands
-from openai import AsyncOpenAI
+from google import genai
+from google.genai import types
 
 
 # ============================================================
-# HSL-CORP AI SYSTEM
+# HSL-CORP GEMINI AI SYSTEM
 # ============================================================
 
 class AICog(commands.Cog):
@@ -15,17 +16,17 @@ class AICog(commands.Cog):
         self.bot = bot
 
         # --------------------------------------------------------
-        # OPENAI API KEY
+        # GEMINI API KEY
         # --------------------------------------------------------
 
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = os.getenv("GEMINI_API_KEY")
 
         if not api_key:
             raise RuntimeError(
-                "❌ OPENAI_API_KEY is missing from Railway Variables!"
+                "❌ GEMINI_API_KEY is missing from Railway Variables!"
             )
 
-        self.client = AsyncOpenAI(
+        self.client = genai.Client(
             api_key=api_key
         )
 
@@ -49,7 +50,7 @@ Personality:
 """
 
         print(
-            "✅ HSL AI system initialized",
+            "✅ HSL Gemini AI system initialized",
             flush=True
         )
 
@@ -65,7 +66,7 @@ Personality:
     ):
 
         # --------------------------------------------------------
-        # DEBUG - EVERY MESSAGE
+        # DEBUG
         # --------------------------------------------------------
 
         print(
@@ -77,7 +78,7 @@ Personality:
         )
 
         # --------------------------------------------------------
-        # IGNORE BOT MESSAGES
+        # IGNORE BOTS
         # --------------------------------------------------------
 
         if message.author.bot:
@@ -88,29 +89,23 @@ Personality:
         # --------------------------------------------------------
 
         if self.bot.user is None:
-
-            print(
-                "⚠️ AI: bot.user is None",
-                flush=True
-            )
-
             return
 
         # --------------------------------------------------------
-        # CHECK MENTION
+        # ONLY RESPOND WHEN MENTIONED
         # --------------------------------------------------------
 
         if self.bot.user not in message.mentions:
 
             print(
-                "ℹ️ AI: message does not mention bot",
+                "ℹ️ AI: bot was not mentioned",
                 flush=True
             )
 
             return
 
         print(
-            f"🧠 AI TRIGGERED | "
+            f"🧠 GEMINI TRIGGERED | "
             f"User={message.author} | "
             f"Channel={message.channel}",
             flush=True
@@ -140,11 +135,6 @@ Personality:
 
         if not content:
 
-            print(
-                "ℹ️ AI: empty message after removing mention",
-                flush=True
-            )
-
             await message.reply(
                 "Haan bhai 😄 kya hua?",
                 mention_author=False
@@ -153,46 +143,51 @@ Personality:
             return
 
         print(
-            f"📝 AI QUESTION: {content}",
+            f"📝 GEMINI QUESTION: {content}",
             flush=True
         )
 
         # --------------------------------------------------------
-        # TYPING INDICATOR
+        # TYPING
         # --------------------------------------------------------
 
         try:
 
             async with message.channel.typing():
 
-                # ------------------------------------------------
-                # SEND OPENAI REQUEST
-                # ------------------------------------------------
-
                 print(
-                    "🔄 Sending request to OpenAI...",
+                    "🔄 Sending request to Gemini...",
                     flush=True
                 )
 
-                response = await self.client.responses.create(
+                # ------------------------------------------------
+                # GEMINI REQUEST
+                # ------------------------------------------------
 
-                    model="gpt-5-mini",
+                response = await self.client.aio.models.generate_content(
 
-                    instructions=self.system_prompt,
+                    model="gemini-3.7-flash",
 
-                    input=content,
+                    contents=content,
 
-                    max_output_tokens=500
+                    config=types.GenerateContentConfig(
+                        system_instruction=self.system_prompt,
+                        max_output_tokens=500,
+                        temperature=0.8
+                    )
                 )
 
                 # ------------------------------------------------
-                # GET RESPONSE
+                # RESPONSE TEXT
                 # ------------------------------------------------
 
-                reply = response.output_text.strip()
+                reply = response.text
+
+                if reply:
+                    reply = reply.strip()
 
                 print(
-                    f"✅ OpenAI RESPONSE: {reply[:500]}",
+                    f"✅ GEMINI RESPONSE: {reply[:500] if reply else 'EMPTY'}",
                     flush=True
                 )
 
@@ -202,18 +197,13 @@ Personality:
 
                 if not reply:
 
-                    print(
-                        "⚠️ OpenAI returned an empty response",
-                        flush=True
-                    )
-
                     reply = (
-                        "Bhai mujhe response nahi mila 😅 "
+                        "Bhai Gemini ne response nahi diya 😅 "
                         "dobara try kar."
                     )
 
                 # ------------------------------------------------
-                # DISCORD MESSAGE LIMIT
+                # DISCORD 2000 CHARACTER LIMIT
                 # ------------------------------------------------
 
                 if len(reply) > 2000:
@@ -221,7 +211,7 @@ Personality:
                     reply = reply[:1990] + "..."
 
                 # ------------------------------------------------
-                # SEND DISCORD MESSAGE
+                # SEND
                 # ------------------------------------------------
 
                 await message.reply(
@@ -230,12 +220,12 @@ Personality:
                 )
 
                 print(
-                    "✅ AI reply sent successfully",
+                    "✅ Gemini reply sent successfully",
                     flush=True
                 )
 
         # --------------------------------------------------------
-        # OPENAI / OTHER ERROR
+        # ERROR
         # --------------------------------------------------------
 
         except Exception as e:
@@ -246,7 +236,7 @@ Personality:
             )
 
             print(
-                "❌ AI ERROR",
+                "❌ GEMINI AI ERROR",
                 flush=True
             )
 
@@ -276,14 +266,13 @@ Personality:
             except Exception as discord_error:
 
                 print(
-                    f"❌ Could not send error message: "
-                    f"{discord_error}",
+                    f"❌ Discord reply error: {discord_error}",
                     flush=True
                 )
 
 
 # ============================================================
-# COG SETUP
+# SETUP
 # ============================================================
 
 async def setup(bot):
@@ -293,6 +282,6 @@ async def setup(bot):
     )
 
     print(
-        "✅ cogs.ai loaded successfully",
+        "✅ cogs.ai Gemini loaded successfully",
         flush=True
     )
