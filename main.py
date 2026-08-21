@@ -1,3 +1,4 @@
+print("🔥🔥🔥 HSL MAIN.PY LOADED - AI VERSION 🔥🔥🔥", flush=True)
 import os
 import discord
 from discord.ext import commands
@@ -32,7 +33,8 @@ class HSLBot(commands.Bot):
         print("✅ database.py loaded")
               
     async def setup_hook(self):
-
+        
+        print("🚀 HSL SETUP_HOOK STARTED", flush=True)
         print("🔄 Loading utility.py...")
         await self.load_extension("cogs.utility")
         print("✅ utility.py loaded")
@@ -69,9 +71,9 @@ class HSLBot(commands.Bot):
         await self.load_extension("cogs.infoCommands")
         print("✅ infoCommands.py loaded")
 
-        print("🔄 Loading ai.py...")
+        print("🔄 Loading ai.py...", flush=True)
         await self.load_extension("cogs.ai")
-        print("✅ ai.py loaded")
+        print("✅ ai.py loaded", flush=True)
            
         guild_ids = [
             1519933809402056805,  # Server 1
