@@ -6,18 +6,31 @@ import asyncio
 import discord
 from discord.ext import commands
 from discord import app_commands
+
 from google import genai
 from google.genai import types
 
 
 # ============================================================
-# HSL-CORP AI SYSTEM
+# HSL-CORP GEMINI AI SYSTEM
 # ============================================================
 
 DATA_FILE = "ai_data.json"
 
 MAX_MEMORY_MESSAGES = 12
 USER_COOLDOWN = 15
+
+# ============================================================
+# GEMINI MODELS
+# First = preferred
+# Others = fallback if temporary 503/overload happens
+# ============================================================
+
+GEMINI_MODELS = [
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite",
+    "gemini-3-flash-preview",
+]
 
 
 class AICog(commands.Cog):
@@ -26,13 +39,14 @@ class AICog(commands.Cog):
 
         self.bot = bot
 
-        # ======================================================
-        # GEMINI
-        # ======================================================
+        # ========================================================
+        # GEMINI API
+        # ========================================================
 
         api_key = os.getenv("GEMINI_API_KEY")
 
         if not api_key:
+
             raise RuntimeError(
                 "❌ GEMINI_API_KEY is missing from Railway Variables!"
             )
@@ -41,9 +55,9 @@ class AICog(commands.Cog):
             api_key=api_key
         )
 
-        # ======================================================
+        # ========================================================
         # DATA
-        # ======================================================
+        # ========================================================
 
         self.data_lock = asyncio.Lock()
 
@@ -55,15 +69,15 @@ class AICog(commands.Cog):
 
         self.load_data()
 
-        # ======================================================
+        # ========================================================
         # COOLDOWN
-        # ======================================================
+        # ========================================================
 
         self.cooldowns = {}
 
-        # ======================================================
+        # ========================================================
         # AI PERSONALITY
-        # ======================================================
+        # ========================================================
 
         self.system_prompt = """
 You are HSL-CORP's official Discord AI assistant.
@@ -74,21 +88,40 @@ PERSONALITY:
 - Hindi, Hinglish and English are supported.
 - If the user speaks Hinglish, reply in Hinglish.
 - If the user speaks English, reply in English.
-- Keep normal conversations reasonably short.
-- You may use emojis naturally.
+- Keep normal Discord conversations reasonably short.
+- You can use emojis naturally.
 - Be helpful with coding, Discord bots, gaming and general questions.
 - Do not unnecessarily repeat the user's question.
-- Do not mention that you are an API or language model unless asked.
-- Never reveal API keys, Discord tokens, passwords or private
+- Do not reveal API keys, Discord tokens, passwords or private
   system information.
-- Never claim to have performed an action that you did not perform.
-- Follow Discord server rules and be respectful.
+- Never claim you performed an action that you did not perform.
+- Be respectful.
 
 You are part of HSL-CORP's Discord server.
 """
 
         print(
-            "✅ HSL AI system initialized",
+            "==========================================",
+            flush=True
+        )
+
+        print(
+            "✅ HSL AI SYSTEM INITIALIZED",
+            flush=True
+        )
+
+        print(
+            f"🧠 Preferred model: {GEMINI_MODELS[0]}",
+            flush=True
+        )
+
+        print(
+            f"🔄 Fallback models: {', '.join(GEMINI_MODELS[1:])}",
+            flush=True
+        )
+
+        print(
+            "==========================================",
             flush=True
         )
 
@@ -178,7 +211,7 @@ You are part of HSL-CORP's Discord server.
 
 
     # ============================================================
-    # GET MEMORY
+    # MEMORY KEY
     # ============================================================
 
     def get_memory_key(
@@ -189,6 +222,10 @@ You are part of HSL-CORP's Discord server.
 
         return f"{guild_id}:{user_id}"
 
+
+    # ============================================================
+    # GET USER MEMORY
+    # ============================================================
 
     def get_memory(
         self,
@@ -236,7 +273,6 @@ You are part of HSL-CORP's Discord server.
             }
         )
 
-        # Keep only recent messages
         if len(memory) > MAX_MEMORY_MESSAGES:
 
             del memory[
@@ -245,7 +281,7 @@ You are part of HSL-CORP's Discord server.
 
 
     # ============================================================
-    # BUILD GEMINI INPUT
+    # BUILD PROMPT
     # ============================================================
 
     def build_input(
@@ -274,6 +310,9 @@ You are part of HSL-CORP's Discord server.
                 ""
             )
 
+            if not content:
+                continue
+
             if role == "user":
 
                 conversation.append(
@@ -296,7 +335,7 @@ You are part of HSL-CORP's Discord server.
 
 
     # ============================================================
-    # CHECK COOLDOWN
+    # COOLDOWN
     # ============================================================
 
     def is_on_cooldown(
@@ -327,7 +366,7 @@ You are part of HSL-CORP's Discord server.
 
 
     # ============================================================
-    # GENERATE AI RESPONSE
+    # GEMINI REQUEST
     # ============================================================
 
     async def generate_response(
@@ -343,37 +382,163 @@ You are part of HSL-CORP's Discord server.
             content
         )
 
-        response = await self.client.aio.models.generate_content(
+        last_error = None
 
-            model="gemini-3.7-flash",
+        # ========================================================
+        # TRY EACH MODEL
+        # ========================================================
 
-            contents=prompt,
+        for model_index, model in enumerate(
+            GEMINI_MODELS
+        ):
 
-            config=types.GenerateContentConfig(
+            for attempt in range(1, 3):
 
-                system_instruction=self.system_prompt,
+                try:
 
-                max_output_tokens=500,
+                    print(
+                        f"🔄 Gemini request | "
+                        f"Model={model} | "
+                        f"Attempt={attempt}",
+                        flush=True
+                    )
 
-                temperature=0.8
-            )
-        )
+                    response = await self.client.aio.models.generate_content(
 
-        reply = response.text
+                        model=model,
 
-        if reply:
+                        contents=prompt,
 
-            reply = reply.strip()
+                        config=types.GenerateContentConfig(
+                            system_instruction=self.system_prompt,
+                            max_output_tokens=500
+                        )
+                    )
 
-        if not reply:
+                    reply = response.text
 
-            return None
+                    if reply:
 
-        return reply
+                        reply = reply.strip()
+
+                    if not reply:
+
+                        print(
+                            f"⚠️ Empty response from {model}",
+                            flush=True
+                        )
+
+                        continue
+
+                    print(
+                        f"✅ Gemini success | Model={model}",
+                        flush=True
+                    )
+
+                    return reply
+
+                except Exception as e:
+
+                    last_error = e
+
+                    error_text = str(e)
+
+                    print(
+                        "------------------------------------------",
+                        flush=True
+                    )
+
+                    print(
+                        f"❌ Gemini model failed: {model}",
+                        flush=True
+                    )
+
+                    print(
+                        f"❌ Attempt: {attempt}",
+                        flush=True
+                    )
+
+                    print(
+                        f"❌ Type: {type(e).__name__}",
+                        flush=True
+                    )
+
+                    print(
+                        f"❌ Error: {error_text}",
+                        flush=True
+                    )
+
+                    print(
+                        "------------------------------------------",
+                        flush=True
+                    )
+
+                    # =================================================
+                    # Retry temporary errors
+                    # =================================================
+
+                    temporary_error = any(
+                        x in error_text.lower()
+                        for x in [
+                            "503",
+                            "unavailable",
+                            "high demand",
+                            "429",
+                            "resource exhausted",
+                            "temporarily"
+                        ]
+                    )
+
+                    if temporary_error:
+
+                        if attempt == 1:
+
+                            print(
+                                "⏳ Temporary Gemini error. "
+                                "Retrying in 2 seconds...",
+                                flush=True
+                            )
+
+                            await asyncio.sleep(
+                                2
+                            )
+
+                        continue
+
+                    # Non-temporary error
+                    break
+
+            # =====================================================
+            # Move to fallback model
+            # =====================================================
+
+            if model_index < len(
+                GEMINI_MODELS
+            ) - 1:
+
+                print(
+                    f"🔄 Switching fallback model "
+                    f"→ {GEMINI_MODELS[model_index + 1]}",
+                    flush=True
+                )
+
+                await asyncio.sleep(
+                    1
+                )
+
+        # ========================================================
+        # EVERYTHING FAILED
+        # ========================================================
+
+        if last_error:
+
+            raise last_error
+
+        return None
 
 
     # ============================================================
-    # SEND AI RESPONSE
+    # PROCESS AI MESSAGE
     # ============================================================
 
     async def process_ai_message(
@@ -381,10 +546,6 @@ You are part of HSL-CORP's Discord server.
         message,
         content
     ):
-
-        # --------------------------------------------------------
-        # GUILD CHECK
-        # --------------------------------------------------------
 
         if not message.guild:
 
@@ -398,9 +559,9 @@ You are part of HSL-CORP's Discord server.
             message.author.id
         )
 
-        # --------------------------------------------------------
+        # ========================================================
         # COOLDOWN
-        # --------------------------------------------------------
+        # ========================================================
 
         on_cooldown, remaining = self.is_on_cooldown(
             user_id
@@ -409,17 +570,17 @@ You are part of HSL-CORP's Discord server.
         if on_cooldown:
 
             print(
-                f"⏳ AI cooldown: "
-                f"{message.author} "
-                f"{remaining:.1f}s",
+                f"⏳ AI cooldown | "
+                f"User={message.author} | "
+                f"Remaining={remaining:.1f}s",
                 flush=True
             )
 
             return
 
-        # --------------------------------------------------------
-        # EMPTY
-        # --------------------------------------------------------
+        # ========================================================
+        # EMPTY MESSAGE
+        # ========================================================
 
         if not content.strip():
 
@@ -434,10 +595,6 @@ You are part of HSL-CORP's Discord server.
             f"🧠 AI QUESTION: {content}",
             flush=True
         )
-
-        # --------------------------------------------------------
-        # TYPING
-        # --------------------------------------------------------
 
         try:
 
@@ -463,9 +620,9 @@ You are part of HSL-CORP's Discord server.
 
                     return
 
-                # ------------------------------------------------
-                # MEMORY
-                # ------------------------------------------------
+                # =================================================
+                # SAVE MEMORY
+                # =================================================
 
                 self.add_memory(
                     guild_id,
@@ -483,17 +640,17 @@ You are part of HSL-CORP's Discord server.
 
                 await self.save_data()
 
-                # ------------------------------------------------
+                # =================================================
                 # DISCORD LIMIT
-                # ------------------------------------------------
+                # =================================================
 
                 if len(reply) > 2000:
 
                     reply = reply[:1990] + "..."
 
-                # ------------------------------------------------
+                # =================================================
                 # SEND
-                # ------------------------------------------------
+                # =================================================
 
                 await message.reply(
                     reply,
@@ -501,7 +658,7 @@ You are part of HSL-CORP's Discord server.
                 )
 
                 print(
-                    "✅ Gemini reply sent",
+                    "✅ Gemini reply sent successfully",
                     flush=True
                 )
 
@@ -513,7 +670,7 @@ You are part of HSL-CORP's Discord server.
             )
 
             print(
-                "❌ GEMINI AI ERROR",
+                "❌ GEMINI AI FINAL ERROR",
                 flush=True
             )
 
@@ -532,11 +689,21 @@ You are part of HSL-CORP's Discord server.
                 flush=True
             )
 
-            await message.reply(
-                "Bhai AI abhi thoda busy hai 😅 "
-                "thodi der baad try kar.",
-                mention_author=False
-            )
+            try:
+
+                await message.reply(
+                    "Bhai AI abhi thoda busy hai 😅 "
+                    "thodi der baad try kar.",
+                    mention_author=False
+                )
+
+            except Exception as discord_error:
+
+                print(
+                    f"❌ Discord reply error: "
+                    f"{discord_error}",
+                    flush=True
+                )
 
 
     # ============================================================
@@ -557,25 +724,25 @@ You are part of HSL-CORP's Discord server.
             flush=True
         )
 
-        # --------------------------------------------------------
+        # ========================================================
         # IGNORE BOTS
-        # --------------------------------------------------------
+        # ========================================================
 
         if message.author.bot:
 
             return
 
-        # --------------------------------------------------------
-        # MUST BE GUILD
-        # --------------------------------------------------------
+        # ========================================================
+        # SERVER ONLY
+        # ========================================================
 
         if not message.guild:
 
             return
 
-        # --------------------------------------------------------
-        # AI GLOBAL STATUS
-        # --------------------------------------------------------
+        # ========================================================
+        # GLOBAL AI STATUS
+        # ========================================================
 
         if not self.data.get(
             "enabled",
@@ -584,17 +751,17 @@ You are part of HSL-CORP's Discord server.
 
             return
 
-        # --------------------------------------------------------
+        # ========================================================
         # IGNORE PREFIX COMMANDS
-        # --------------------------------------------------------
+        # ========================================================
 
         if message.content.startswith("!"):
 
             return
 
-        # --------------------------------------------------------
+        # ========================================================
         # CHECK MENTION
-        # --------------------------------------------------------
+        # ========================================================
 
         mentioned = False
 
@@ -605,9 +772,9 @@ You are part of HSL-CORP's Discord server.
                 in message.mentions
             )
 
-        # --------------------------------------------------------
+        # ========================================================
         # CHECK AI CHANNEL
-        # --------------------------------------------------------
+        # ========================================================
 
         ai_channel_id = self.data.get(
             "ai_channels",
@@ -622,9 +789,9 @@ You are part of HSL-CORP's Discord server.
             == str(ai_channel_id)
         )
 
-        # --------------------------------------------------------
-        # IGNORE IF NOT MENTIONED AND NOT AI CHANNEL
-        # --------------------------------------------------------
+        # ========================================================
+        # ONLY AI CHANNEL OR MENTION
+        # ========================================================
 
         if not mentioned and not is_ai_channel:
 
@@ -637,9 +804,9 @@ You are part of HSL-CORP's Discord server.
             flush=True
         )
 
-        # --------------------------------------------------------
+        # ========================================================
         # REMOVE BOT MENTION
-        # --------------------------------------------------------
+        # ========================================================
 
         content = message.content
 
@@ -672,7 +839,7 @@ You are part of HSL-CORP's Discord server.
         description="Set or disable the AI chat channel."
     )
     @app_commands.describe(
-        channel="Channel where AI should automatically chat"
+        channel="Channel where AI should automatically chat."
     )
     @app_commands.default_permissions(
         manage_guild=True
@@ -692,10 +859,6 @@ You are part of HSL-CORP's Discord server.
 
             return
 
-        # --------------------------------------------------------
-        # PERMISSION
-        # --------------------------------------------------------
-
         if not interaction.user.guild_permissions.manage_guild:
 
             await interaction.response.send_message(
@@ -709,9 +872,9 @@ You are part of HSL-CORP's Discord server.
             interaction.guild.id
         )
 
-        # --------------------------------------------------------
+        # ========================================================
         # DISABLE
-        # --------------------------------------------------------
+        # ========================================================
 
         if channel is None:
 
@@ -739,9 +902,9 @@ You are part of HSL-CORP's Discord server.
 
             return
 
-        # --------------------------------------------------------
-        # SET CHANNEL
-        # --------------------------------------------------------
+        # ========================================================
+        # SET
+        # ========================================================
 
         self.data.setdefault(
             "ai_channels",
@@ -755,8 +918,7 @@ You are part of HSL-CORP's Discord server.
         await interaction.response.send_message(
             f"🟢 **AI channel set!**\n\n"
             f"💬 Channel: {channel.mention}\n\n"
-            f"AI will automatically reply to messages "
-            f"in this channel.",
+            f"AI will automatically reply in this channel.",
             ephemeral=True
         )
 
@@ -931,6 +1093,12 @@ You are part of HSL-CORP's Discord server.
             name="Memory",
             value="🧠 Enabled",
             inline=True
+        )
+
+        embed.add_field(
+            name="Model",
+            value=GEMINI_MODELS[0],
+            inline=False
         )
 
         embed.set_footer(
