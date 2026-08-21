@@ -10,8 +10,13 @@ from openai import AsyncOpenAI
 # ============================================================
 
 class AICog(commands.Cog):
+
     def __init__(self, bot):
         self.bot = bot
+
+        # --------------------------------------------------------
+        # OPENAI API KEY
+        # --------------------------------------------------------
 
         api_key = os.getenv("OPENAI_API_KEY")
 
@@ -24,6 +29,10 @@ class AICog(commands.Cog):
             api_key=api_key
         )
 
+        # --------------------------------------------------------
+        # AI PERSONALITY
+        # --------------------------------------------------------
+
         self.system_prompt = """
 You are HSL-CORP's friendly Discord AI assistant.
 
@@ -34,60 +43,82 @@ Personality:
 - Keep normal Discord replies short and conversational.
 - You can joke casually when appropriate.
 - If someone asks a technical question, explain it clearly.
-- Never reveal API keys, Discord tokens, passwords or private system information.
+- Never reveal API keys, Discord tokens, passwords or private
+  system information.
 - You are an assistant inside a Discord server.
 """
 
-        print("✅ HSL AI system initialized")
-
-
-    # ========================================================
-    # MESSAGE LISTENER
-    # ========================================================
-
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-
-        # ----------------------------------------------------
-        # DEBUG
-        # ----------------------------------------------------
-
         print(
-            f"🤖 AI MESSAGE | "
-            f"Author: {message.author} | "
-            f"Content: {message.content[:200]}"
+            "✅ HSL AI system initialized",
+            flush=True
         )
 
-        # ----------------------------------------------------
-        # IGNORE BOTS
-        # ----------------------------------------------------
+
+    # ============================================================
+    # MESSAGE LISTENER
+    # ============================================================
+
+    @commands.Cog.listener()
+    async def on_message(
+        self,
+        message: discord.Message
+    ):
+
+        # --------------------------------------------------------
+        # DEBUG - EVERY MESSAGE
+        # --------------------------------------------------------
+
+        print(
+            f"🤖 AI MESSAGE RECEIVED | "
+            f"Author={message.author} | "
+            f"Bot={message.author.bot} | "
+            f"Content={message.content[:300]}",
+            flush=True
+        )
+
+        # --------------------------------------------------------
+        # IGNORE BOT MESSAGES
+        # --------------------------------------------------------
 
         if message.author.bot:
             return
 
-        # ----------------------------------------------------
-        # CHECK BOT
-        # ----------------------------------------------------
+        # --------------------------------------------------------
+        # CHECK BOT USER
+        # --------------------------------------------------------
 
         if self.bot.user is None:
+
+            print(
+                "⚠️ AI: bot.user is None",
+                flush=True
+            )
+
             return
 
-        # ----------------------------------------------------
-        # ONLY RESPOND WHEN MENTIONED
-        # ----------------------------------------------------
+        # --------------------------------------------------------
+        # CHECK MENTION
+        # --------------------------------------------------------
 
         if self.bot.user not in message.mentions:
+
+            print(
+                "ℹ️ AI: message does not mention bot",
+                flush=True
+            )
+
             return
 
         print(
             f"🧠 AI TRIGGERED | "
-            f"User: {message.author} | "
-            f"Channel: {message.channel}"
+            f"User={message.author} | "
+            f"Channel={message.channel}",
+            flush=True
         )
 
-        # ----------------------------------------------------
+        # --------------------------------------------------------
         # REMOVE BOT MENTION
-        # ----------------------------------------------------
+        # --------------------------------------------------------
 
         content = message.content
 
@@ -103,11 +134,16 @@ Personality:
 
         content = content.strip()
 
-        # ----------------------------------------------------
+        # --------------------------------------------------------
         # EMPTY MESSAGE
-        # ----------------------------------------------------
+        # --------------------------------------------------------
 
         if not content:
+
+            print(
+                "ℹ️ AI: empty message after removing mention",
+                flush=True
+            )
 
             await message.reply(
                 "Haan bhai 😄 kya hua?",
@@ -117,31 +153,47 @@ Personality:
             return
 
         print(
-            f"📝 AI QUESTION: {content}"
+            f"📝 AI QUESTION: {content}",
+            flush=True
         )
 
-        # ----------------------------------------------------
-        # TYPING
-        # ----------------------------------------------------
+        # --------------------------------------------------------
+        # TYPING INDICATOR
+        # --------------------------------------------------------
 
-        async with message.channel.typing():
+        try:
 
-            try:
+            async with message.channel.typing():
 
-                print("🔄 Sending request to OpenAI...")
+                # ------------------------------------------------
+                # SEND OPENAI REQUEST
+                # ------------------------------------------------
+
+                print(
+                    "🔄 Sending request to OpenAI...",
+                    flush=True
+                )
 
                 response = await self.client.responses.create(
+
                     model="gpt-5-mini",
+
                     instructions=self.system_prompt,
+
                     input=content,
+
                     max_output_tokens=500
                 )
+
+                # ------------------------------------------------
+                # GET RESPONSE
+                # ------------------------------------------------
 
                 reply = response.output_text.strip()
 
                 print(
-                    f"✅ OpenAI RESPONSE: "
-                    f"{reply[:300]}"
+                    f"✅ OpenAI RESPONSE: {reply[:500]}",
+                    flush=True
                 )
 
                 # ------------------------------------------------
@@ -150,13 +202,18 @@ Personality:
 
                 if not reply:
 
+                    print(
+                        "⚠️ OpenAI returned an empty response",
+                        flush=True
+                    )
+
                     reply = (
-                        "Bhai mujhe iska response nahi mila 😅 "
+                        "Bhai mujhe response nahi mila 😅 "
                         "dobara try kar."
                     )
 
                 # ------------------------------------------------
-                # DISCORD 2000 CHARACTER LIMIT
+                # DISCORD MESSAGE LIMIT
                 # ------------------------------------------------
 
                 if len(reply) > 2000:
@@ -164,7 +221,7 @@ Personality:
                     reply = reply[:1990] + "..."
 
                 # ------------------------------------------------
-                # SEND RESPONSE
+                # SEND DISCORD MESSAGE
                 # ------------------------------------------------
 
                 await message.reply(
@@ -172,25 +229,43 @@ Personality:
                     mention_author=False
                 )
 
-                print("✅ AI reply sent")
-
-            except Exception as e:
-
-                # ------------------------------------------------
-                # FULL ERROR LOG
-                # ------------------------------------------------
-
                 print(
-                    "❌ AI ERROR"
+                    "✅ AI reply sent successfully",
+                    flush=True
                 )
 
-                print(
-                    f"❌ Error Type: {type(e).__name__}"
-                )
+        # --------------------------------------------------------
+        # OPENAI / OTHER ERROR
+        # --------------------------------------------------------
 
-                print(
-                    f"❌ Error: {e}"
-                )
+        except Exception as e:
+
+            print(
+                "==========================================",
+                flush=True
+            )
+
+            print(
+                "❌ AI ERROR",
+                flush=True
+            )
+
+            print(
+                f"❌ Error Type: {type(e).__name__}",
+                flush=True
+            )
+
+            print(
+                f"❌ Error: {e}",
+                flush=True
+            )
+
+            print(
+                "==========================================",
+                flush=True
+            )
+
+            try:
 
                 await message.reply(
                     "Bhai AI abhi thoda busy hai 😅 "
@@ -198,9 +273,17 @@ Personality:
                     mention_author=False
                 )
 
+            except Exception as discord_error:
+
+                print(
+                    f"❌ Could not send error message: "
+                    f"{discord_error}",
+                    flush=True
+                )
+
 
 # ============================================================
-# SETUP
+# COG SETUP
 # ============================================================
 
 async def setup(bot):
@@ -210,5 +293,6 @@ async def setup(bot):
     )
 
     print(
-        "✅ cogs.ai loaded successfully"
+        "✅ cogs.ai loaded successfully",
+        flush=True
     )
