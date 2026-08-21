@@ -64,6 +64,10 @@ class HSLBot(commands.Bot):
         print("🔄 Loading welcome.py...")
         await self.load_extension("cogs.welcome")
         print("✅ welcome.py loaded")
+     
+        print("🔄 Loading infoCommands.py...")
+        await self.load_extension("cogs.infoCommands")
+        print("✅ infoCommands.py loaded")
 
         print("🔄 Loading infoCommands.py...")
         await self.load_extension("cogs.infoCommands")
