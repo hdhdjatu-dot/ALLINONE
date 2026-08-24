@@ -77,7 +77,6 @@ class HSLBot(commands.Bot):
            
         guild_ids = [
             1519933809402056805,  # Server 1
-            1435943252455981080,
             1531880443383906426,   # Server 3
         ]
 
