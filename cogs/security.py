@@ -1482,132 +1482,54 @@ class Security(commands.Cog):
     async def whitelistbot(
         self,
         ctx,
-        member: discord.Member,
+        bot_id: str,
         action: str = "add"
     ):
+        await ctx.defer(ephemeral=True)
 
-        if not await self.is_owner(
-            ctx.author
-        ):
+        if not await self.is_owner(ctx.author):
+            return await self.owner_only_message(ctx)
 
-            return await self.owner_only_message(
-                ctx
-            )
+        try:
+            uid = int(bot_id.strip().replace("<@","").replace(">","").replace("!",""))
+            user = await self.bot.fetch_user(uid)
+        except:
+            return await ctx.send("❌ Sahi Bot ID / Mention daalo.", delete_after=5)
 
-        if not member.bot:
+        if not user.bot:
+            return await ctx.send("❌ Ye member bot nahi hai.", delete_after=5)
 
-            return await ctx.send(
-                "❌ Ye member bot nahi hai.",
-                delete_after=5
-            )
-
-        action = str(
-            action
-        ).lower().strip()
-
-        settings = self.get_settings(
-            ctx.guild.id
-        )
-
-        bots = settings.setdefault(
-            "whitelist_bots",
-            []
-        )
-
+        action = str(action).lower().strip()
+        settings = self.get_settings(ctx.guild.id)
+        bots = settings.setdefault("whitelist_bots", [])
+        
+        # normalize
         normalized = []
-
-        for bot_id in bots:
-
+        for b in bots:
             try:
-                normalized.append(
-                    int(bot_id)
-                )
-            except (
-                TypeError,
-                ValueError
-            ):
+                normalized.append(int(b))
+            except:
                 pass
-
-        bots = list(
-            dict.fromkeys(
-                normalized
-            )
-        )
-
+        bots = list(dict.fromkeys(normalized))
         settings["whitelist_bots"] = bots
 
-        if action in (
-            "add",
-            "on",
-            "enable",
-            "toggle"
-        ):
-
-            if member.id in bots:
-
-                return await ctx.send(
-                    f"🟢 {member.mention} "
-                    "**already whitelist mein hai.**",
-                    delete_after=5
-                )
-
-            bots.append(
-                member.id
-            )
-
+        if action in ("add", "on", "enable", "toggle"):
+            if uid in bots:
+                return await ctx.send(f"🟢 {user.mention} **already whitelist mein hai.**", delete_after=5)
+            bots.append(uid)
             settings["whitelist_bots"] = bots
+            save_data(self.data)
+            return await ctx.send(f"🤖 {user.mention} **successfully bot whitelist mein add ho gaya.**\n✅ Ab Anti-Bot is bot ko allow karega.", delete_after=7)
 
-            save_data(
-                self.data
-            )
-
-            return await ctx.send(
-                f"🤖 {member.mention} "
-                "**successfully bot whitelist mein add ho gaya.**\n"
-                "✅ Ab Anti-Bot is bot ko allow karega.",
-                delete_after=7
-            )
-
-        if action in (
-            "remove",
-            "delete",
-            "del",
-            "off",
-            "disable"
-        ):
-
-            if member.id not in bots:
-
-                return await ctx.send(
-                    f"🟡 {member.mention} "
-                    "**bot whitelist mein nahi hai.**",
-                    delete_after=5
-                )
-
-            bots.remove(
-                member.id
-            )
-
+        if action in ("remove", "delete", "del", "off", "disable"):
+            if uid not in bots:
+                return await ctx.send(f"🟡 {user.mention} **bot whitelist mein nahi hai.**", delete_after=5)
+            bots.remove(uid)
             settings["whitelist_bots"] = bots
+            save_data(self.data)
+            return await ctx.send(f"🔴 {user.mention} **bot whitelist se remove ho gaya.**", delete_after=6)
 
-            save_data(
-                self.data
-            )
-
-            return await ctx.send(
-                f"🔴 {member.mention} "
-                "**bot whitelist se remove ho gaya.**",
-                delete_after=6
-            )
-
-        return await ctx.send(
-            "❌ Invalid action.\n\n"
-            "**Use:**\n"
-            "`!whitelistbot @Bot`\n"
-            "`!whitelistbot @Bot remove`",
-            delete_after=7
-        )
-
+        return await ctx.send("❌ Invalid action.\n\n**Use:**\n`!whitelistbot @Bot`\n`!whitelistbot 1234567890`\n`!whitelistbot @Bot remove`", delete_after=7)
 
     # ========================================================
     # LIST WHITELISTED BOTS
