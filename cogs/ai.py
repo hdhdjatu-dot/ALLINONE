@@ -80,7 +80,7 @@ class AICog(commands.Cog):
         # ========================================================
 
         self.system_prompt = """
-You are HSL-CORP's official Discord AI assistant.
+You are AFF-ARMY official Discord AI assistant.
 
 PERSONALITY:
 - Friendly, natural and casual.
@@ -97,7 +97,7 @@ PERSONALITY:
 - Never claim you performed an action that you did not perform.
 - Be respectful.
 
-You are part of HSL-CORP's Discord server.
+You are part of AFF-ARMY's Discord server.
 """
 
         print(
@@ -106,7 +106,7 @@ You are part of HSL-CORP's Discord server.
         )
 
         print(
-            "✅ HSL AI SYSTEM INITIALIZED",
+            "✅ AFF AI SYSTEM INITIALIZED",
             flush=True
         )
 
@@ -936,7 +936,7 @@ You are part of HSL-CORP's Discord server.
 
     @app_commands.command(
         name="aion",
-        description="Enable HSL AI."
+        description="Enable AFF AI."
     )
     @app_commands.default_permissions(
         manage_guild=True
@@ -971,7 +971,7 @@ You are part of HSL-CORP's Discord server.
         await self.save_data()
 
         await interaction.response.send_message(
-            "🟢 **HSL AI enabled!**",
+            "🟢 **AFF AI enabled!**",
             ephemeral=True
         )
 
@@ -982,7 +982,7 @@ You are part of HSL-CORP's Discord server.
 
     @app_commands.command(
         name="aioff",
-        description="Disable HSL AI."
+        description="Disable AFF AI."
     )
     @app_commands.default_permissions(
         manage_guild=True
@@ -1017,7 +1017,7 @@ You are part of HSL-CORP's Discord server.
         await self.save_data()
 
         await interaction.response.send_message(
-            "🔴 **HSL AI disabled!**",
+            "🔴 **AFF AI disabled!**",
             ephemeral=True
         )
 
@@ -1028,7 +1028,7 @@ You are part of HSL-CORP's Discord server.
 
     @app_commands.command(
         name="aistatus",
-        description="Show HSL AI status."
+        description="Show AFF AI status."
     )
     async def aistatus(
         self,
@@ -1073,7 +1073,7 @@ You are part of HSL-CORP's Discord server.
                     channel_text = f"<#{channel_id}>"
 
         embed = discord.Embed(
-            title="🤖 HSL-CORP AI STATUS",
+            title="🤖 AFF-ARMY AI STATUS",
             color=discord.Color.blurple()
         )
 
@@ -1102,7 +1102,7 @@ You are part of HSL-CORP's Discord server.
         )
 
         embed.set_footer(
-            text="HSL & CORPORATION • AI SYSTEM"
+            text="AFF ARMY • AI SYSTEM"
         )
 
         await interaction.response.send_message(
@@ -1117,7 +1117,7 @@ You are part of HSL-CORP's Discord server.
 
     @app_commands.command(
         name="aiclearmemory",
-        description="Clear your HSL AI conversation memory."
+        description="Clear your AFF AI conversation memory."
     )
     async def aiclearmemory(
         self,
