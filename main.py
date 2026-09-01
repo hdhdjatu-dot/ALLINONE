@@ -80,7 +80,7 @@ class HSLBot(commands.Bot):
         print("✅ tts.py loaded", flush=True)
            
         guild_ids = [
-            1435943252455981080,  # Server 1
+            1531880443383906426,  # Server 1
             
                
         ]
