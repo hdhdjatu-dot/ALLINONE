@@ -151,14 +151,15 @@ BASE_YTDLP = {
 
     "noplaylist": True,
 
-    "force_ipv4": True,
+    # IMPORTANT: don't force a specific YouTube format ID
+    "format": "bestaudio/best",
 
+    "force_ipv4": True,
     "source_address": "0.0.0.0",
 
-    "socket_timeout": 6,
-
-    "retries": 1,
-    "fragment_retries": 1,
+    "socket_timeout": 10,
+    "retries": 3,
+    "fragment_retries": 3,
 
     "nocheckcertificate": True,
     "geo_bypass": True,
@@ -180,7 +181,6 @@ BASE_YTDLP = {
 
 
 def yt_options():
-
     options = dict(BASE_YTDLP)
 
     options["http_headers"] = dict(
@@ -191,7 +191,6 @@ def yt_options():
         options["cookiefile"] = COOKIE_FILE
 
     return options
-
 
 # =========================================================
 # TEXT NORMALIZATION
