@@ -20,10 +20,11 @@ DATA_FILE = "ai_data.json"
 MAX_MEMORY_MESSAGES = 12
 USER_COOLDOWN = 15
 
+
 # ============================================================
 # GEMINI MODELS
 # First = preferred
-# Others = fallback if temporary 503/overload happens
+# Others = fallback if temporary errors happen
 # ============================================================
 
 GEMINI_MODELS = [
@@ -46,7 +47,6 @@ class AICog(commands.Cog):
         api_key = os.getenv("GEMINI_API_KEY")
 
         if not api_key:
-
             raise RuntimeError(
                 "❌ GEMINI_API_KEY is missing from Railway Variables!"
             )
@@ -62,7 +62,7 @@ class AICog(commands.Cog):
         self.data_lock = asyncio.Lock()
 
         self.data = {
-            "enabled": True,
+            "guild_settings": {},
             "ai_channels": {},
             "memory": {}
         }
@@ -125,6 +125,40 @@ You are part of AFF-ARMY's Discord server.
             flush=True
         )
 
+    # ============================================================
+    # GUILD SETTINGS
+    # ============================================================
+
+    def get_guild_settings(self, guild_id):
+
+        guild_id = str(guild_id)
+
+        settings = self.data.setdefault(
+            "guild_settings",
+            {}
+        )
+
+        guild_settings = settings.setdefault(
+            guild_id,
+            {}
+        )
+
+        # Default = ON
+        if "enabled" not in guild_settings:
+            guild_settings["enabled"] = True
+
+        return guild_settings
+
+    def is_guild_ai_enabled(self, guild_id):
+
+        settings = self.get_guild_settings(
+            guild_id
+        )
+
+        return settings.get(
+            "enabled",
+            True
+        ) is True
 
     # ============================================================
     # LOAD DATA
@@ -146,8 +180,41 @@ You are part of AFF-ARMY's Discord server.
 
                 if isinstance(loaded, dict):
 
+                    # ------------------------------------------------
+                    # New structure
+                    # ------------------------------------------------
+
                     self.data.update(
                         loaded
+                    )
+
+                    # ------------------------------------------------
+                    # Remove old global enabled flag.
+                    # We don't use it anymore.
+                    # ------------------------------------------------
+
+                    self.data.pop(
+                        "enabled",
+                        None
+                    )
+
+                    # ------------------------------------------------
+                    # Make sure required containers exist
+                    # ------------------------------------------------
+
+                    self.data.setdefault(
+                        "guild_settings",
+                        {}
+                    )
+
+                    self.data.setdefault(
+                        "ai_channels",
+                        {}
+                    )
+
+                    self.data.setdefault(
+                        "memory",
+                        {}
                     )
 
                 print(
@@ -170,7 +237,6 @@ You are part of AFF-ARMY's Discord server.
                 f"❌ AI data load error: {e}",
                 flush=True
             )
-
 
     # ============================================================
     # SAVE DATA
@@ -200,7 +266,6 @@ You are part of AFF-ARMY's Discord server.
                 flush=True
             )
 
-
     async def save_data(self):
 
         async with self.data_lock:
@@ -208,7 +273,6 @@ You are part of AFF-ARMY's Discord server.
             await asyncio.to_thread(
                 self.save_data_sync
             )
-
 
     # ============================================================
     # MEMORY KEY
@@ -221,7 +285,6 @@ You are part of AFF-ARMY's Discord server.
     ):
 
         return f"{guild_id}:{user_id}"
-
 
     # ============================================================
     # GET USER MEMORY
@@ -247,7 +310,6 @@ You are part of AFF-ARMY's Discord server.
             key,
             []
         )
-
 
     # ============================================================
     # ADD MEMORY
@@ -278,7 +340,6 @@ You are part of AFF-ARMY's Discord server.
             del memory[
                 :-MAX_MEMORY_MESSAGES
             ]
-
 
     # ============================================================
     # BUILD PROMPT
@@ -333,20 +394,22 @@ You are part of AFF-ARMY's Discord server.
             conversation
         )
 
-
     # ============================================================
     # COOLDOWN
     # ============================================================
 
     def is_on_cooldown(
         self,
+        guild_id,
         user_id
     ):
+
+        key = f"{guild_id}:{user_id}"
 
         now = time.time()
 
         last_time = self.cooldowns.get(
-            user_id,
+            key,
             0
         )
 
@@ -359,11 +422,10 @@ You are part of AFF-ARMY's Discord server.
             return True, remaining
 
         self.cooldowns[
-            user_id
+            key
         ] = now
 
         return False, 0
-
 
     # ============================================================
     # GEMINI REQUEST
@@ -418,7 +480,6 @@ You are part of AFF-ARMY's Discord server.
                     reply = response.text
 
                     if reply:
-
                         reply = reply.strip()
 
                     if not reply:
@@ -473,10 +534,6 @@ You are part of AFF-ARMY's Discord server.
                         flush=True
                     )
 
-                    # =================================================
-                    # Retry temporary errors
-                    # =================================================
-
                     temporary_error = any(
                         x in error_text.lower()
                         for x in [
@@ -505,7 +562,6 @@ You are part of AFF-ARMY's Discord server.
 
                         continue
 
-                    # Non-temporary error
                     break
 
             # =====================================================
@@ -531,11 +587,9 @@ You are part of AFF-ARMY's Discord server.
         # ========================================================
 
         if last_error:
-
             raise last_error
 
         return None
-
 
     # ============================================================
     # PROCESS AI MESSAGE
@@ -548,7 +602,6 @@ You are part of AFF-ARMY's Discord server.
     ):
 
         if not message.guild:
-
             return
 
         guild_id = str(
@@ -560,10 +613,25 @@ You are part of AFF-ARMY's Discord server.
         )
 
         # ========================================================
+        # HARD AI OFF CHECK
+        # ========================================================
+
+        if not self.is_guild_ai_enabled(
+            guild_id
+        ):
+            print(
+                f"🔴 AI blocked because AI is OFF | "
+                f"Guild={guild_id}",
+                flush=True
+            )
+            return
+
+        # ========================================================
         # COOLDOWN
         # ========================================================
 
         on_cooldown, remaining = self.is_on_cooldown(
+            guild_id,
             user_id
         )
 
@@ -649,6 +717,24 @@ You are part of AFF-ARMY's Discord server.
                     reply = reply[:1990] + "..."
 
                 # =================================================
+                # FINAL OFF CHECK
+                #
+                # This prevents a reply if /aioff was executed
+                # while Gemini was generating the response.
+                # =================================================
+
+                if not self.is_guild_ai_enabled(
+                    guild_id
+                ):
+                    print(
+                        f"🔴 AI reply cancelled because AI was "
+                        f"turned OFF during generation | "
+                        f"Guild={guild_id}",
+                        flush=True
+                    )
+                    return
+
+                # =================================================
                 # SEND
                 # =================================================
 
@@ -705,7 +791,6 @@ You are part of AFF-ARMY's Discord server.
                     flush=True
                 )
 
-
     # ============================================================
     # MESSAGE LISTENER
     # ============================================================
@@ -729,7 +814,6 @@ You are part of AFF-ARMY's Discord server.
         # ========================================================
 
         if message.author.bot:
-
             return
 
         # ========================================================
@@ -737,17 +821,28 @@ You are part of AFF-ARMY's Discord server.
         # ========================================================
 
         if not message.guild:
-
             return
 
+        guild_id = str(
+            message.guild.id
+        )
+
         # ========================================================
-        # GLOBAL AI STATUS
+        # HARD AI OFF
+        #
+        # This is deliberately BEFORE channel/mention checks.
+        # If AI is OFF, absolutely nothing can trigger it.
         # ========================================================
 
-        if not self.data.get(
-            "enabled",
-            True
+        if not self.is_guild_ai_enabled(
+            guild_id
         ):
+
+            print(
+                f"🔴 AI OFF | Ignoring message | "
+                f"Guild={guild_id}",
+                flush=True
+            )
 
             return
 
@@ -756,7 +851,6 @@ You are part of AFF-ARMY's Discord server.
         # ========================================================
 
         if message.content.startswith("!"):
-
             return
 
         # ========================================================
@@ -780,7 +874,7 @@ You are part of AFF-ARMY's Discord server.
             "ai_channels",
             {}
         ).get(
-            str(message.guild.id)
+            guild_id
         )
 
         is_ai_channel = (
@@ -794,7 +888,6 @@ You are part of AFF-ARMY's Discord server.
         # ========================================================
 
         if not mentioned and not is_ai_channel:
-
             return
 
         print(
@@ -824,11 +917,19 @@ You are part of AFF-ARMY's Discord server.
 
         content = content.strip()
 
+        # ========================================================
+        # FINAL OFF CHECK BEFORE GEMINI
+        # ========================================================
+
+        if not self.is_guild_ai_enabled(
+            guild_id
+        ):
+            return
+
         await self.process_ai_message(
             message,
             content
         )
-
 
     # ============================================================
     # /AICHANNEL
@@ -873,7 +974,7 @@ You are part of AFF-ARMY's Discord server.
         )
 
         # ========================================================
-        # DISABLE
+        # DISABLE AUTOMATIC AI CHANNEL
         # ========================================================
 
         if channel is None:
@@ -890,7 +991,8 @@ You are part of AFF-ARMY's Discord server.
 
             await interaction.response.send_message(
                 "🔴 **AI channel disabled.**\n"
-                "AI will now only reply when mentioned.",
+                "AI will no longer automatically reply in a channel.\n"
+                "AI can still reply when mentioned, if AI is ON.",
                 ephemeral=True
             )
 
@@ -913,6 +1015,11 @@ You are part of AFF-ARMY's Discord server.
             channel.id
         )
 
+        # Setting a channel automatically enables AI for this guild.
+        self.get_guild_settings(
+            guild_id
+        )["enabled"] = True
+
         await self.save_data()
 
         await interaction.response.send_message(
@@ -929,14 +1036,13 @@ You are part of AFF-ARMY's Discord server.
             flush=True
         )
 
-
     # ============================================================
     # /AION
     # ============================================================
 
     @app_commands.command(
         name="aion",
-        description="Enable AFF AI."
+        description="Enable AFF AI in this server."
     )
     @app_commands.default_permissions(
         manage_guild=True
@@ -964,17 +1070,27 @@ You are part of AFF-ARMY's Discord server.
 
             return
 
-        self.data[
-            "enabled"
-        ] = True
+        guild_id = str(
+            interaction.guild.id
+        )
+
+        self.get_guild_settings(
+            guild_id
+        )["enabled"] = True
 
         await self.save_data()
 
         await interaction.response.send_message(
-            "🟢 **AFF AI enabled!**",
+            "🟢 **AFF AI enabled!**\n\n"
+            "AI can now respond according to the configured "
+            "AI channel / mention settings.",
             ephemeral=True
         )
 
+        print(
+            f"🟢 AI enabled | Guild={guild_id}",
+            flush=True
+        )
 
     # ============================================================
     # /AIOFF
@@ -982,7 +1098,7 @@ You are part of AFF-ARMY's Discord server.
 
     @app_commands.command(
         name="aioff",
-        description="Disable AFF AI."
+        description="Completely disable AFF AI in this server."
     )
     @app_commands.default_permissions(
         manage_guild=True
@@ -1010,17 +1126,38 @@ You are part of AFF-ARMY's Discord server.
 
             return
 
-        self.data[
-            "enabled"
-        ] = False
+        guild_id = str(
+            interaction.guild.id
+        )
+
+        # ========================================================
+        # HARD DISABLE FOR THIS SERVER ONLY
+        # ========================================================
+
+        self.get_guild_settings(
+            guild_id
+        )["enabled"] = False
 
         await self.save_data()
 
-        await interaction.response.send_message(
-            "🔴 **AFF AI disabled!**",
-            ephemeral=True
+        # Verify what was actually saved in memory.
+        saved_state = self.is_guild_ai_enabled(
+            guild_id
         )
 
+        print(
+            f"🔴 AI disabled | "
+            f"Guild={guild_id} | "
+            f"State={saved_state}",
+            flush=True
+        )
+
+        await interaction.response.send_message(
+            "🔴 **AFF AI disabled!**\n\n"
+            "AI is now completely OFF in this server.\n"
+            "It will NOT reply in the AI channel or when mentioned.",
+            ephemeral=True
+        )
 
     # ============================================================
     # /AISTATUS
@@ -1028,16 +1165,28 @@ You are part of AFF-ARMY's Discord server.
 
     @app_commands.command(
         name="aistatus",
-        description="Show AFF AI status."
+        description="Show AFF AI status for this server."
     )
     async def aistatus(
         self,
         interaction: discord.Interaction
     ):
 
-        enabled = self.data.get(
-            "enabled",
-            True
+        if not interaction.guild:
+
+            await interaction.response.send_message(
+                "❌ This command can only be used in a server.",
+                ephemeral=True
+            )
+
+            return
+
+        guild_id = str(
+            interaction.guild.id
+        )
+
+        enabled = self.is_guild_ai_enabled(
+            guild_id
         )
 
         status = (
@@ -1049,28 +1198,26 @@ You are part of AFF-ARMY's Discord server.
 
         channel_text = "Not set"
 
-        if interaction.guild:
+        channel_id = self.data.get(
+            "ai_channels",
+            {}
+        ).get(
+            guild_id
+        )
 
-            channel_id = self.data.get(
-                "ai_channels",
-                {}
-            ).get(
-                str(interaction.guild.id)
+        if channel_id:
+
+            channel = interaction.guild.get_channel(
+                int(channel_id)
             )
 
-            if channel_id:
+            if channel:
 
-                channel = interaction.guild.get_channel(
-                    int(channel_id)
-                )
+                channel_text = channel.mention
 
-                if channel:
+            else:
 
-                    channel_text = channel.mention
-
-                else:
-
-                    channel_text = f"<#{channel_id}>"
+                channel_text = f"<#{channel_id}>"
 
         embed = discord.Embed(
             title="🤖 AFF-ARMY AI STATUS",
@@ -1109,7 +1256,6 @@ You are part of AFF-ARMY's Discord server.
             embed=embed,
             ephemeral=True
         )
-
 
     # ============================================================
     # /AICLEARMEMORY
@@ -1175,3 +1321,4 @@ async def setup(bot):
         "✅ cogs.ai loaded successfully",
         flush=True
     )
+
