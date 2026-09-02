@@ -18,8 +18,8 @@ import yt_dlp
 # =========================================================
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-COOKIE_PATH = os.path.join(BASE_DIR, "cookies.txt")
 
+COOKIE_PATH = os.path.join(BASE_DIR, "cookies.txt")
 COOKIE_FILE = None
 
 
@@ -54,7 +54,6 @@ else:
 # =========================================================
 
 def load_opus():
-
     if discord.opus.is_loaded():
         print("[MUSIC] [OK] Opus already loaded.")
         return True
@@ -69,7 +68,6 @@ def load_opus():
     ]
 
     for path in paths:
-
         if not path:
             continue
 
@@ -82,7 +80,9 @@ def load_opus():
                 return True
 
         except Exception as e:
-            print(f"[MUSIC] [WARN] Opus failed {path}: {e}")
+            print(
+                f"[MUSIC] [WARN] Opus failed {path}: {e}"
+            )
 
     print("[MUSIC] [ERROR] Opus NOT loaded.")
     return False
@@ -96,7 +96,6 @@ OPUS_LOADED = load_opus()
 # =========================================================
 
 def find_ffmpeg():
-
     path = shutil.which("ffmpeg")
 
     if path:
@@ -112,7 +111,6 @@ def find_ffmpeg():
     ]
 
     for path in paths:
-
         if os.path.isfile(path):
             print(f"[MUSIC] [OK] FFmpeg: {path}")
             return path
@@ -151,18 +149,23 @@ BASE_YTDLP = {
 
     "noplaylist": True,
 
-    # IMPORTANT: don't force a specific YouTube format ID
+    # IMPORTANT:
+    # We remove/override this for the first extraction attempt.
+    # This remains here as a fallback/default value.
     "format": "bestaudio/best",
 
     "force_ipv4": True,
     "source_address": "0.0.0.0",
 
-    "socket_timeout": 10,
-    "retries": 3,
-    "fragment_retries": 3,
+    "socket_timeout": 15,
+
+    "retries": 5,
+    "fragment_retries": 5,
 
     "nocheckcertificate": True,
     "geo_bypass": True,
+
+    "cachedir": False,
 
     "http_headers": {
         "User-Agent": USER_AGENT,
@@ -170,6 +173,7 @@ BASE_YTDLP = {
         "Accept": "*/*",
     },
 
+    # YouTube JS challenge support
     "js_runtimes": {
         "deno": {}
     },
@@ -192,12 +196,12 @@ def yt_options():
 
     return options
 
+
 # =========================================================
 # TEXT NORMALIZATION
 # =========================================================
 
 def normalize_title(text):
-
     if not text:
         return ""
 
@@ -244,7 +248,6 @@ def normalize_title(text):
     ]
 
     for word in remove_words:
-
         text = re.sub(
             r"\b" + re.escape(word) + r"\b",
             " ",
@@ -277,7 +280,6 @@ def normalize_title(text):
 
 
 def title_tokens(text):
-
     normalized = normalize_title(text)
 
     if not normalized:
@@ -311,7 +313,6 @@ def title_tokens(text):
 
 
 def is_same_song(candidate_title, old_title):
-
     if not candidate_title or not old_title:
         return False
 
@@ -364,7 +365,6 @@ class Song:
         thumbnail,
         requester
     ):
-
         self.title = title
         self.url = url
         self.thumbnail = thumbnail
@@ -450,6 +450,7 @@ class MusicPlayer:
             headers = {
                 "Authorization":
                     f"Bot {self.bot.http.token}",
+
                 "Content-Type":
                     "application/json",
             }
@@ -484,7 +485,6 @@ class MusicPlayer:
 
 
     async def clear_voice_status(self):
-
         await self.voice_status("")
 
 
@@ -509,9 +509,9 @@ class MusicPlayer:
 
             try:
 
-                # -----------------------------------------
+                # =========================================
                 # DIRECT URL
-                # -----------------------------------------
+                # =========================================
 
                 if query_text.startswith(
                     (
@@ -527,6 +527,9 @@ class MusicPlayer:
                         "noplaylist": True,
                         "extract_flat": True,
                     })
+
+                    # Search/extract metadata only.
+                    options.pop("format", None)
 
                     with yt_dlp.YoutubeDL(
                         options
@@ -573,15 +576,12 @@ class MusicPlayer:
                     if not url:
                         return None
 
-                    # =================================================
-                    # THUMBNAIL FALLBACK
-                    # =================================================
-
                     thumbnail = info.get("thumbnail")
 
                     if not thumbnail and video_id:
+
                         thumbnail = (
-                            f"https://i.ytimg.com/vi/"
+                            "https://i.ytimg.com/vi/"
                             f"{video_id}/hqdefault.jpg"
                         )
 
@@ -595,15 +595,19 @@ class MusicPlayer:
                         requester
                     )
 
-                # -----------------------------------------
-                # FAST SEARCH
-                # -----------------------------------------
+
+                # =========================================
+                # YOUTUBE SEARCH
+                # =========================================
 
                 options = yt_options()
 
                 options["extract_flat"] = True
                 options["skip_download"] = True
                 options["noplaylist"] = True
+
+                # Search does not need a format.
+                options.pop("format", None)
 
                 with yt_dlp.YoutubeDL(
                     options
@@ -631,7 +635,6 @@ class MusicPlayer:
                     return None
 
                 title = entry.get("title") or ""
-
                 video_id = entry.get("id")
 
                 if not title or not video_id:
@@ -652,19 +655,16 @@ class MusicPlayer:
                 url = (
                     entry.get("webpage_url")
                     or
-                    f"https://www.youtube.com/"
+                    "https://www.youtube.com/"
                     f"watch?v={video_id}"
                 )
-
-                # =================================================
-                # THUMBNAIL FALLBACK
-                # =================================================
 
                 thumbnail = entry.get("thumbnail")
 
                 if not thumbnail:
+
                     thumbnail = (
-                        f"https://i.ytimg.com/vi/"
+                        "https://i.ytimg.com/vi/"
                         f"{video_id}/hqdefault.jpg"
                     )
 
@@ -700,20 +700,54 @@ class MusicPlayer:
 
         def extract():
 
+            # =================================================
+            # IMPORTANT:
+            #
+            # DO NOT force android_vr.
+            #
+            # First let yt-dlp select the normal/default
+            # YouTube client.
+            #
+            # Then use web_safari.
+            #
+            # Then web_embedded as final fallback.
+            # =================================================
+
             strategies = [
-                {
-                    "player_client": [
-                        "web_embedded"
-                    ]
-                },
-                {
-                    "player_client": [
-                        "android_vr"
-                    ]
-                },
+
+                (
+                    "default",
+                    None,
+                    False
+                ),
+
+                (
+                    "web_safari",
+                    {
+                        "player_client": [
+                            "web_safari"
+                        ]
+                    },
+                    False
+                ),
+
+                (
+                    "web_embedded",
+                    {
+                        "player_client": [
+                            "web_embedded"
+                        ]
+                    },
+                    False
+                ),
+
             ]
 
-            for index, strategy in enumerate(
+            for index, (
+                strategy_name,
+                extractor_strategy,
+                force_audio_format
+            ) in enumerate(
                 strategies,
                 1
             ):
@@ -723,29 +757,58 @@ class MusicPlayer:
                     print(
                         "[MUSIC] [STREAM]",
                         f"{index}/{len(strategies)}",
+                        strategy_name,
+                        "->",
                         song.title
                     )
 
                     options = yt_options()
 
                     options.update({
-
                         "skip_download": True,
-
                         "noplaylist": True,
-
                         "extract_flat": False,
-
-                        "format": (
-                            "bestaudio[protocol^=http]"
-                            "/bestaudio"
-                        ),
-
+                        "cachedir": False,
                     })
 
-                    options["extractor_args"] = {
-                        "youtube": strategy
-                    }
+                    # =========================================
+                    # DEFAULT CLIENT
+                    # =========================================
+
+                    if extractor_strategy is None:
+
+                        options.pop(
+                            "extractor_args",
+                            None
+                        )
+
+                        # VERY IMPORTANT:
+                        # Don't force bestaudio/best here.
+                        #
+                        # This prevents:
+                        #
+                        # Requested format is not available
+                        #
+                        options.pop(
+                            "format",
+                            None
+                        )
+
+                    # =========================================
+                    # FALLBACK CLIENT
+                    # =========================================
+
+                    else:
+
+                        options["extractor_args"] = {
+                            "youtube": extractor_strategy
+                        }
+
+                        # Let yt-dlp choose if possible.
+                        options.pop(
+                            "format",
+                            None
+                        )
 
                     with yt_dlp.YoutubeDL(
                         options
@@ -758,6 +821,10 @@ class MusicPlayer:
 
                     if not info:
                         continue
+
+                    # =========================================
+                    # ENTRY
+                    # =========================================
 
                     if "entries" in info:
 
@@ -775,7 +842,21 @@ class MusicPlayer:
 
                         info = entries[0]
 
+                    # =========================================
+                    # DIRECT SELECTED URL
+                    # =========================================
+
                     stream_url = info.get("url")
+
+                    selected_format = None
+
+                    if stream_url:
+
+                        selected_format = info
+
+                    # =========================================
+                    # MANUAL FORMAT FALLBACK
+                    # =========================================
 
                     if not stream_url:
 
@@ -784,41 +865,159 @@ class MusicPlayer:
                             or []
                         )
 
+                        # -------------------------------------
+                        # Audio-only formats
+                        # -------------------------------------
+
                         audio_formats = [
+
                             f
+
                             for f in formats
+
                             if f.get("url")
+
                             and f.get("acodec")
-                            not in (None, "none")
+                            not in (
+                                None,
+                                "none"
+                            )
+
                             and f.get("vcodec")
-                            in (None, "none")
+                            in (
+                                None,
+                                "none"
+                            )
+
                         ]
 
-                        if audio_formats:
+                        # -------------------------------------
+                        # Sort by audio bitrate
+                        # -------------------------------------
 
-                            audio_formats.sort(
-                                key=lambda f:
-                                (
+                        audio_formats.sort(
+
+                            key=lambda f: (
+                                float(
                                     f.get("abr")
                                     or 0
                                 ),
-                                reverse=True
+
+                                float(
+                                    f.get("tbr")
+                                    or 0
+                                ),
+
+                                float(
+                                    f.get("asr")
+                                    or 0
+                                ),
+                            ),
+
+                            reverse=True
+                        )
+
+                        if audio_formats:
+
+                            selected_format = (
+                                audio_formats[0]
                             )
 
                             stream_url = (
-                                audio_formats[0]
-                                .get("url")
+                                selected_format.get(
+                                    "url"
+                                )
+                            )
+
+                    # =========================================
+                    # LAST FORMAT FALLBACK
+                    # =========================================
+
+                    if not stream_url:
+
+                        formats = (
+                            info.get("formats")
+                            or []
+                        )
+
+                        usable_formats = [
+
+                            f
+
+                            for f in formats
+
+                            if f.get("url")
+
+                            and f.get("acodec")
+                            not in (
+                                None,
+                                "none"
+                            )
+
+                        ]
+
+                        usable_formats.sort(
+
+                            key=lambda f: (
+                                float(
+                                    f.get("abr")
+                                    or 0
+                                ),
+
+                                float(
+                                    f.get("tbr")
+                                    or 0
+                                ),
+                            ),
+
+                            reverse=True
+                        )
+
+                        if usable_formats:
+
+                            selected_format = (
+                                usable_formats[0]
+                            )
+
+                            stream_url = (
+                                selected_format.get(
+                                    "url"
+                                )
                             )
 
                     if not stream_url:
+
+                        print(
+                            "[MUSIC] [STREAM] "
+                            "No playable URL:",
+                            strategy_name
+                        )
+
                         continue
 
-                    headers = dict(
-                        info.get(
-                            "http_headers"
+                    # =========================================
+                    # HEADERS
+                    # =========================================
+
+                    headers = {}
+
+                    if selected_format:
+
+                        headers.update(
+                            selected_format.get(
+                                "http_headers"
+                            )
+                            or {}
                         )
-                        or {}
-                    )
+
+                    if not headers:
+
+                        headers.update(
+                            info.get(
+                                "http_headers"
+                            )
+                            or {}
+                        )
 
                     headers.setdefault(
                         "User-Agent",
@@ -830,15 +1029,42 @@ class MusicPlayer:
                         "https://www.youtube.com/"
                     )
 
+                    format_id = (
+                        selected_format.get(
+                            "format_id"
+                        )
+                        if selected_format
+                        else info.get("format_id")
+                    )
+
+                    protocol = (
+                        selected_format.get(
+                            "protocol"
+                        )
+                        if selected_format
+                        else info.get("protocol")
+                    )
+
+                    print(
+                        "[MUSIC] [STREAM OK]",
+                        strategy_name,
+                        "| format:",
+                        format_id,
+                        "| protocol:",
+                        protocol
+                    )
+
                     return {
                         "url": stream_url,
-                        "headers": headers
+                        "headers": headers,
                     }
 
                 except Exception as e:
 
                     print(
                         "[MUSIC] [STREAM ERROR]",
+                        strategy_name,
+                        "->",
                         repr(e)
                     )
 
@@ -874,6 +1100,7 @@ class MusicPlayer:
         )
 
         if self.current:
+
             used_urls.add(
                 self.current.url
             )
@@ -888,6 +1115,12 @@ class MusicPlayer:
 
                     options["extract_flat"] = True
                     options["skip_download"] = True
+                    options["noplaylist"] = True
+
+                    options.pop(
+                        "format",
+                        None
+                    )
 
                     with yt_dlp.YoutubeDL(
                         options
@@ -927,16 +1160,20 @@ class MusicPlayer:
                         url = (
                             entry.get("webpage_url")
                             or
-                            f"https://www.youtube.com/"
+                            "https://www.youtube.com/"
                             f"watch?v={video_id}"
                         )
 
                         if url in used_urls:
                             continue
 
-                        if self.current and is_same_song(
-                            title,
-                            self.current.title
+                        if (
+                            self.current
+                            and
+                            is_same_song(
+                                title,
+                                self.current.title
+                            )
                         ):
                             continue
 
@@ -964,15 +1201,16 @@ class MusicPlayer:
                         ):
                             continue
 
-                        # =================================================
-                        # THUMBNAIL FALLBACK
-                        # =================================================
-
-                        thumbnail = entry.get("thumbnail")
+                        thumbnail = (
+                            entry.get(
+                                "thumbnail"
+                            )
+                        )
 
                         if not thumbnail:
+
                             thumbnail = (
-                                f"https://i.ytimg.com/vi/"
+                                "https://i.ytimg.com/vi/"
                                 f"{video_id}/hqdefault.jpg"
                             )
 
@@ -1041,9 +1279,9 @@ class MusicPlayer:
 
             try:
 
-                # -----------------------------------------
+                # =========================================
                 # SELECT SONG
-                # -----------------------------------------
+                # =========================================
 
                 if self.loop and self.current:
 
@@ -1052,6 +1290,7 @@ class MusicPlayer:
                 elif self.queue:
 
                     song = self.queue.popleft()
+
                     self.current = song
 
                 elif self.autoplay and self.current:
@@ -1061,7 +1300,9 @@ class MusicPlayer:
                     if not song:
 
                         self.current = None
+
                         await self.clear_voice_status()
+
                         return
 
                     self.current = song
@@ -1069,14 +1310,18 @@ class MusicPlayer:
                 else:
 
                     self.current = None
+
                     await self.clear_voice_status()
+
                     return
 
-                # -----------------------------------------
+
+                # =========================================
                 # NEW TOKEN
-                # -----------------------------------------
+                # =========================================
 
                 self.play_token += 1
+
                 token = self.play_token
 
                 print(
@@ -1086,9 +1331,10 @@ class MusicPlayer:
                     token
                 )
 
-                # -----------------------------------------
+
+                # =========================================
                 # STOP OLD SOURCE
-                # -----------------------------------------
+                # =========================================
 
                 if (
                     self.voice.is_playing()
@@ -1098,9 +1344,10 @@ class MusicPlayer:
 
                     self.voice.stop()
 
-                # -----------------------------------------
+
+                # =========================================
                 # GET STREAM
-                # -----------------------------------------
+                # =========================================
 
                 stream = await self.get_audio_stream(
                     song
@@ -1115,9 +1362,9 @@ class MusicPlayer:
                     )
 
                     self.current = None
-
                     self.starting = False
 
+                    # Try next queued/autoplay song
                     if self.queue or self.autoplay:
 
                         asyncio.create_task(
@@ -1126,12 +1373,14 @@ class MusicPlayer:
 
                     return
 
-                # -----------------------------------------
+
+                # =========================================
                 # TOKEN CHECK
-                # -----------------------------------------
+                # =========================================
 
                 if token != self.play_token:
                     return
+
 
                 stream_url = stream["url"]
 
@@ -1150,10 +1399,19 @@ class MusicPlayer:
                     "https://www.youtube.com/"
                 )
 
+
+                # =========================================
+                # FFMPEG HEADERS
+                # =========================================
+
                 header_lines = [
+
                     f"{k}: {v}"
+
                     for k, v in headers.items()
+
                     if v
+
                 ]
 
                 ffmpeg_headers = (
@@ -1161,38 +1419,59 @@ class MusicPlayer:
                     + "\r\n"
                 )
 
-                # -----------------------------------------
+
+                # =========================================
                 # FFMPEG
-                # -----------------------------------------
+                # =========================================
 
                 before_options = (
                     "-nostdin "
+
                     "-reconnect 1 "
+
                     "-reconnect_streamed 1 "
+
                     "-reconnect_at_eof 1 "
+
                     "-reconnect_on_network_error 1 "
+
                     "-reconnect_on_http_error "
                     "403,404,408,429,500,502,503,504 "
-                    "-reconnect_delay_max 3 "
-                    "-rw_timeout 10000000 "
+
+                    "-reconnect_delay_max 5 "
+
+                    "-rw_timeout 15000000 "
+
                     "-headers "
                     f"\"{ffmpeg_headers}\""
                 )
 
                 ffmpeg_options = (
                     "-vn "
+
                     "-loglevel warning "
+
                     "-ar 48000 "
+
                     "-ac 2 "
+
                     "-bufsize 512k"
                 )
+
+
+                # =========================================
+                # CREATE SOURCE
+                # =========================================
 
                 try:
 
                     source = discord.FFmpegPCMAudio(
                         stream_url,
+
                         executable=FFMPEG_PATH,
+
                         before_options=before_options,
+
                         options=ffmpeg_options
                     )
 
@@ -1212,9 +1491,10 @@ class MusicPlayer:
 
                     return
 
-                # -----------------------------------------
+
+                # =========================================
                 # CALLBACK
-                # -----------------------------------------
+                # =========================================
 
                 def after_play(error):
 
@@ -1254,9 +1534,10 @@ class MusicPlayer:
                             repr(e)
                         )
 
-                # -----------------------------------------
+
+                # =========================================
                 # FINAL TOKEN
-                # -----------------------------------------
+                # =========================================
 
                 if token != self.play_token:
 
@@ -1267,9 +1548,10 @@ class MusicPlayer:
 
                     return
 
-                # -----------------------------------------
+
+                # =========================================
                 # PLAY
-                # -----------------------------------------
+                # =========================================
 
                 try:
 
@@ -1291,6 +1573,7 @@ class MusicPlayer:
                         pass
 
                     return
+
 
                 print(
                     "[MUSIC] [PLAYING]",
@@ -1375,27 +1658,38 @@ class MusicPlayer:
         )
 
         embed = discord.Embed(
+
             title="🎵 HSL-CORP MUSIC",
+
             description=(
                 "## 🎶 NOW PLAYING\n\n"
+
                 f"**[{song.title}]"
                 f"({song.url})**\n\n"
+
                 "━━━━━━━━━━━━━━━━━━━━\n"
+
                 f"👤 Requested by: {requester}\n"
+
                 f"🔊 Volume: "
                 f"{int(self.volume * 100)}%\n"
+
                 f"🔁 Loop: "
                 f"{'🟢 ON' if self.loop else '🔴 OFF'}\n"
+
                 f"🤖 Autoplay: "
                 f"{'🟢 ON' if self.autoplay else '🔴 OFF'}\n"
+
                 "━━━━━━━━━━━━━━━━━━━━"
             ),
+
             color=discord.Color.blurple()
         )
 
-        # =====================================================
+
+        # =========================================
         # YOUTUBE SONG IMAGE
-        # =====================================================
+        # =========================================
 
         if song.thumbnail:
 
@@ -1410,6 +1704,7 @@ class MusicPlayer:
         embed.set_footer(
             text="HSL & CORPORATION • Music System"
         )
+
 
         view = MusicControlView(
             self
@@ -1556,7 +1851,6 @@ class MusicControlView(
                 or
                 player.voice.is_paused()
             ):
-
                 player.voice.stop()
 
             player.starting = False
@@ -1656,6 +1950,7 @@ class MusicControlView(
         player.starting = False
 
         player.autoplay_history.clear()
+
         player.play_history.clear()
 
         if player.voice:
@@ -1667,7 +1962,6 @@ class MusicControlView(
                 or
                 player.voice.is_paused()
             ):
-
                 player.voice.stop()
 
             try:
@@ -1676,17 +1970,22 @@ class MusicControlView(
                 pass
 
         player.voice = None
+
         player.text_channel = None
+
         player.now_playing_message = None
 
         try:
 
             await interaction.message.edit(
+
                 content=(
                     "⏹️ **Music stopped "
                     "& queue cleared.**"
                 ),
+
                 embed=None,
+
                 view=None
             )
 
@@ -1705,6 +2004,7 @@ class Music(commands.Cog):
         self.bot = bot
 
         self.players = {}
+
         self.play_command_locks = {}
 
 
@@ -1791,8 +2091,11 @@ class Music(commands.Cog):
                 player.last_play_request
                 ==
                 request_key
+
                 and
-                now -
+
+                now
+                -
                 player.last_play_request_time
                 < 3
             ):
@@ -1803,13 +2106,15 @@ class Music(commands.Cog):
                 )
 
             player.last_play_request = request_key
+
             player.last_play_request_time = now
 
             player.text_channel = ctx.channel
 
-            # -----------------------------------------
+
+            # =========================================
             # VOICE
-            # -----------------------------------------
+            # =========================================
 
             try:
 
@@ -1844,9 +2149,10 @@ class Music(commands.Cog):
                     delete_after=5
                 )
 
-            # -----------------------------------------
+
+            # =========================================
             # LOADING
-            # -----------------------------------------
+            # =========================================
 
             loading = await ctx.send(
                 "🔎 **Searching YouTube...**"
@@ -1887,20 +2193,26 @@ class Music(commands.Cog):
 
                 return
 
+
             try:
                 await loading.delete()
             except Exception:
                 pass
 
+
             player.last_manual_query = query
 
-            # -----------------------------------------
+
+            # =========================================
             # STATE
-            # -----------------------------------------
+            # =========================================
 
             was_playing = (
+
                 player.starting
+
                 or
+
                 (
                     player.voice
                     and
@@ -1910,11 +2222,16 @@ class Music(commands.Cog):
                         player.voice.is_paused()
                     )
                 )
+
                 or
+
                 player.current is not None
+
                 or
+
                 bool(player.queue)
             )
+
 
             player.play_history.append(
                 song.url
@@ -1924,9 +2241,10 @@ class Music(commands.Cog):
                 song
             )
 
-            # -----------------------------------------
+
+            # =========================================
             # QUEUE
-            # -----------------------------------------
+            # =========================================
 
             if was_playing:
 
@@ -1935,13 +2253,18 @@ class Music(commands.Cog):
                 )
 
                 embed = discord.Embed(
+
                     title="🎵 ADDED TO QUEUE",
+
                     description=(
                         f"**[{song.title}]"
                         f"({song.url})**\n\n"
+
                         f"👤 {ctx.author.mention}\n"
+
                         f"📍 Position: `{position}`"
                     ),
+
                     color=discord.Color.green()
                 )
 
@@ -1960,9 +2283,10 @@ class Music(commands.Cog):
                     delete_after=8
                 )
 
-            # -----------------------------------------
+
+            # =========================================
             # START
-            # -----------------------------------------
+            # =========================================
 
             await player.play_next()
 
@@ -2013,6 +2337,7 @@ class Music(commands.Cog):
             player.starting = False
 
             await player.play_next()
+
 
         # Delete prefix command
 
@@ -2114,6 +2439,7 @@ class Music(commands.Cog):
         player.starting = False
 
         player.autoplay_history.clear()
+
         player.play_history.clear()
 
         if player.voice:
@@ -2129,12 +2455,16 @@ class Music(commands.Cog):
                 player.voice.stop()
 
             try:
+
                 await player.voice.disconnect()
+
             except Exception:
                 pass
 
         player.voice = None
+
         player.text_channel = None
+
         player.now_playing_message = None
 
         await ctx.send(
@@ -2177,8 +2507,11 @@ class Music(commands.Cog):
             )
 
         embed = discord.Embed(
+
             title="📜 HSL-CORP MUSIC QUEUE",
+
             description="\n".join(lines),
+
             color=discord.Color.blurple()
         )
 
@@ -2231,7 +2564,9 @@ class Music(commands.Cog):
                 discord.PCMVolumeTransformer
             ):
 
-                source.volume = amount / 100
+                source.volume = (
+                    amount / 100
+                )
 
         await ctx.send(
             f"🔊 **Volume set to {amount}%**",
